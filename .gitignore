@@ -1,0 +1,16 @@
+.DS_Store
+.env
+.env.local
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+dist/
+build/
+
+# never commit personal handwriting data or built fonts
+samples/
+fonts/personal/
+*.otf
+*.ttf
+out/
