@@ -1,0 +1,21 @@
+name: ci
+on:
+  push: { branches: [dev, main] }
+  pull_request: { branches: [dev, main] }
+
+jobs:
+  check:
+    # arm64. The whole stack is pinned against Apple Silicon wheels and a source-built
+    # OpenCV is a hard install failure by design (acceptance row 21), so an x86 runner
+    # would test a configuration we refuse to ship.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: uv venv --python 3.14 .venv
+      - run: uv pip install --python .venv/bin/python -e '.[dev]'
+      - run: npm ci
+      - name: integration harness
+        run: ./scripts/integrate.sh
