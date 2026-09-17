@@ -14,3 +14,9 @@ fonts/personal/
 *.otf
 *.ttf
 out/
+
+# EXCEPTION: the M0 spike's reference hands are OFL-licensed third-party fonts,
+# not the user's handwriting, and the spike is not reproducible without them.
+# Their OFL.txt files sit beside them. Personal handwriting stays excluded above.
+!spikes/m0/fonts/*.ttf
+!spikes/m0/fonts/*.otf
