@@ -26,26 +26,51 @@ The image is a view; the document is the truth. A structured document of typed b
 document + style + seed. Editing, AI chat, restyling, re-rolling one equation and PDF
 export all fall out of that one decision.
 
-Handwriting comes from a font built out of your own glyphs: you fill a tracing sheet
-once, photograph it, and the pipeline segments and vectorises each cell into several
-variants per character. Rendering then applies per-glyph jitter, dual-frequency
-baseline drift, slant and ink-weight variation so it never reads as a font.
+Handwriting comes from glyph **outlines**. v1 ships with a licensed reference hand and
+renders immediately with no setup; from M2 you fill a tracing sheet once, photograph it,
+and the pipeline rectifies and segments each cell into several variants per character.
+Rendering applies per-instance affine jitter, dual-frequency baseline drift, slant drift
+and variant rotation so it never reads as a font. Pressure taper and per-instance stroke
+width are deliberately out of v1 — see the milestone ladder in the build plan.
 
-Everything runs locally. Handwriting samples are close to biometric data and never
-leave the machine.
+## Privacy — the precise claim
+
+Stated exactly, because the loose version of this sentence is false and it matters:
+
+> **The tracing sheet, the extracted glyph profile and the font are never transmitted
+> and never committed.** They do not leave the machine, and they never enter this
+> repository, which is public.
+>
+> **Rendered output is your document.** It is sent only when you ask a question about it
+> — asking the AI about a selection may include an image crop of the rendered page, and
+> a rendered page is a picture of your handwriting. That is a choice you make per
+> question, not a background upload.
+
+There is no telemetry, no crash reporting and no third-party font service. The only
+outbound host the application ever contacts is `api.anthropic.com`, and only when you
+use an AI feature. `--offline` disables every AI feature; everything else still works.
 
 ## Status
 
-**Vision stage.** No implementation yet. Nothing here runs.
+**In build.** The seam-freeze has landed on `dev`: the client kernel, the server, the
+document schema and the cross-language RNG are frozen contracts, and the milestones are
+being built against them in parallel. Nothing is installable yet.
 
 ## Run it
 
-Not yet — there is no code. When there is, it will be a CLI that starts a local server
-and opens a browser tab:
+Not yet installable. From a checkout, on macOS with Python 3.14:
 
 ```bash
-assignment-helper hw7.doc
+uv venv --python 3.14 .venv
+uv pip install --python .venv/bin/python -e '.[dev]'
+npm install && npm run build
+.venv/bin/python -m assignment_helper.cli hw7.md
 ```
+
+The CLI starts a local server bound to `127.0.0.1` only and opens a browser tab. Every
+request carries a per-session token that is never written to disk; the server also pins
+the `Host` header, which is the defence against DNS rebinding turning "it only listens on
+localhost" into a same-origin request from someone else's page.
 
 ## Scope
 
@@ -57,4 +82,5 @@ screenshot in, PDF out, and you do the upload.
 
 ## License
 
-Not yet chosen.
+Not yet chosen. The bundled reference handwriting font is third-party and ships under
+its own OFL license, included alongside it.
