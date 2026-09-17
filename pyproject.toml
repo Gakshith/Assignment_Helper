@@ -1,0 +1,75 @@
+[project]
+name = "assignment-helper"
+version = "0.1.0"
+description = "Render a document as handwriting on paper, then print or submit it."
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+
+# Pinned exactly. --selftest asserts these versions at runtime (see docs/release.md).
+# NOTE on watchfiles: dropped deliberately. It has no cp314 wheel and falls back to
+# a Rust build. Plan §C.4 fallback doctrine says drop the dependency rather than move
+# the Python pin. File watching is a stdlib mtime poll in server/watch.py instead.
+# NOTE on uvicorn: plain, not [standard] — the extras pull watchfiles and uvloop.
+dependencies = [
+  "fastapi==0.141.1",
+  "uvicorn==0.53.0",
+  "websockets==17.1",
+  "pydantic==2.13.5",
+  "img2pdf==0.6.3",
+  "pillow==12.3.0",
+  "anthropic==1.6.0",
+  "keyring==25.7.0",
+]
+
+[project.optional-dependencies]
+# The CV stack. Installed only for glyph extraction (M2).
+# I17: these may NEVER be imported at module scope. Lazy-import inside
+# function bodies under assignment_helper/glyphs/** only.
+glyphs = [
+  "opencv-python==4.10.0.84",
+  "scikit-image==0.25.0",
+  "numpy==2.2.1",
+]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "hypothesis",
+  "httpx",
+  "import-linter",
+  "ruff",
+]
+
+[project.scripts]
+assignment-helper = "assignment_helper.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["assignment_helper"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+# I17 enforcement. The render and serve paths must not import the CV stack.
+[tool.importlinter]
+root_package = "assignment_helper"
+
+[[tool.importlinter.contracts]]
+name = "The CV stack is never reachable from the serve or render path"
+type = "forbidden"
+source_modules = ["assignment_helper.app", "assignment_helper.cli", "assignment_helper.document", "assignment_helper.export"]
+forbidden_modules = ["cv2", "skimage", "skan", "numba", "numpy"]
+
+[[tool.importlinter.contracts]]
+name = "spikes are never imported by the product"
+type = "forbidden"
+source_modules = ["assignment_helper"]
+forbidden_modules = ["spikes"]

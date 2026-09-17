@@ -1,0 +1,54 @@
+/* Drafting table, not cozy journal. Plan §B.4, palette verified against WCAG AA.
+   --line fails AA at 1.87:1 and is a DIVIDER ONLY: it never carries text or a
+   meaningful boundary. The palette invites exactly that mistake. */
+:root {
+  --paper: #f4f1e9;
+  --ink: #1c2521;
+  --canvas-bg: #ddd9ce;
+  --accent: #2b5a6b;
+  --accent-warn: #9c5a2e;
+  --line: #b9b2a0;
+  --top-bar-h: 48px;
+  --rail-w: 64px;
+  --panel-w: 320px;
+  --chat-h: 44px;
+  color-scheme: light dark;
+}
+/* Dark mode themes the CHROME ONLY. The page never inverts — a photo-negative page
+   destroys the one thing this product sells. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #e8e4d8;
+    --ink: #201a14;
+    --canvas-bg: #17191a;
+    --accent: #6fa8b8;
+    --accent-warn: #c97a48;
+    --line: #3a3c3a;
+  }
+}
+:root[data-theme='dark'] {
+  --paper: #e8e4d8;
+  --ink: #201a14;
+  --canvas-bg: #17191a;
+  --accent: #6fa8b8;
+  --accent-warn: #c97a48;
+  --line: #3a3c3a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--canvas-bg);
+  color: var(--ink);
+  font: 14px/1.5 'Public Sans', system-ui, sans-serif;
+}
+#shell { display: grid; grid-template-columns: var(--rail-w) 1fr var(--panel-w); min-height: 100vh; }
+#pages { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 16px; }
+.page {
+  position: relative;
+  /* Page corner radius is 0. A rounded page reads as a sticker. */
+  border-radius: 0;
+  box-shadow: 0 2px 24px rgb(28 37 33 / 28%);
+  background: var(--paper);
+}
+.page-layer { position: absolute; inset: 0; display: block; }
+.page-layer--paper { position: relative; }

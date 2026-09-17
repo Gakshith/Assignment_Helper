@@ -7,6 +7,13 @@ __pycache__/
 .venv/
 dist/
 build/
+.claude/worktrees/
+.pytest_cache/
+*.tsbuildinfo
+
+# The built web bundle. Produced by the release workflow, never committed.
+assignment_helper/static/*
+!assignment_helper/static/.gitkeep
 
 # never commit personal handwriting data or built fonts
 samples/
@@ -14,3 +21,11 @@ fonts/personal/
 *.otf
 *.ttf
 out/
+
+# EXCEPTION: the shipped reference hand is an OFL-licensed third-party font.
+# Outline-first (plan §C.2) makes a permissively-licensed handwriting font the
+# reference hand, so it must ship. Personal handwriting stays excluded above.
+!web/public/fonts/reference/*.ttf
+!web/public/fonts/reference/*.otf
+!spikes/m0/fonts/*.ttf
+!spikes/m0/fonts/*.otf
