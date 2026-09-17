@@ -253,10 +253,111 @@ newsprint**, plus color and age. On top of that, a compositing pass with no ML i
   pristine PNG reads as *generated* instantly. Real submitted work has been through
   a phone camera and a compressor.
 
-The `scan-simulator` project (MIT) has 23 physically-motivated transforms along
-exactly these lines and is worth mining rather than reinventing.
+For this, `augraphy` (MIT, 578 stars, arXiv 2208.14558) is the dependency to reach
+for — a three-phase ink/paper/post pipeline with 60+ transforms. Caveat recorded
+honestly: its last release is 8.2.6 from **2023-12-31** and the repo has not been
+pushed since 2025-07-20. It is mature and stable, not actively maintained — treat it
+as a frozen dependency, and budget a little OpenCV of our own for perspective warp,
+vignette and edge shadow, which its print-oriented transforms do not cover.
+
+(An earlier draft of this document recommended `scan-simulator` here. That was wrong:
+it is a 2-star repository with no published package — `pip install scan-simulator`
+returns a 404. Corrected 2026-09-17.)
 
 ---
+
+## After the page exists
+
+The render is not the end of the job. It is the point where you look at the page and
+decide whether it is yours. Everything below exists for that moment.
+
+### The unit of everything is the selection
+
+You drag a box on the page, the way you would circle something on paper. The box
+resolves to whichever document blocks it covers — a line, an equation, a diagram,
+three steps at once. Then one input takes either kind of instruction:
+
+```
+    circle  "v_y = v_0 sin θ"
+              │
+              ├── ask      "is this step right?"        → an answer
+              ├── tell     "make this shorter"          → re-render
+              ├── tell     "redo this in my messier hand" → re-render
+              └── tell     "make this red"              → re-render
+```
+
+A question gets an answer. An instruction gets a new page. Same box, same gesture.
+The AI sees the rendered geometry as well as the text, so *"it won't fit on the line"*
+is a fact it can act on rather than a complaint it can only sympathise with.
+
+**Style scope follows selection scope.** Select nothing and a style change applies to
+the whole page. Select a region and it applies only there. That one rule removes a
+whole category of features: writing the final answer in red is not a "red answer"
+feature, it is a selection plus a colour.
+
+### Fixing one line must not disturb the other nine
+
+This is the property the editor lives or dies on, and it is why blocks carry their own
+seeds rather than the page carrying one.
+
+Step 3 says 6.88 and should say 6.68. You fix it. **Only that block re-renders.** The
+other nine lines keep the exact jitter, drift and ink pooling they already had — the
+page you were looking at a second ago is still the page you are looking at now, with
+one line changed. A page-level seed would reshuffle every glyph on the sheet and make
+every small correction feel like starting over.
+
+The same property covers reflow. If an edit makes a line longer, the text crowds toward
+the margin the way a hand does, and if it still does not fit it wraps and pushes the
+lines below it down the page. Those lines move, but they do not *change* — their seeds
+are their own.
+
+### One dial, not twenty
+
+Neatness is a single control, from *exam final draft* to *2am rushed*. It drives jitter
+amplitude, slant variance, spacing entropy, baseline drift and ink pooling together,
+because those things move together in a real hand. An advanced drawer underneath exposes
+the individual parameters for when the dial is not enough.
+
+Twenty sliders on a panel is a page with twenty competing controls and nobody touches
+any of them.
+
+### The control surface
+
+| Group | What you change |
+|---|---|
+| **Paper** | type — ruled, grid, plain, graph, engineering pad · rule spacing — wide, college, narrow · rule colour · margin line on/off · paper colour — white, cream, ivory, manila, aged · grain |
+| **Ink** | colour — blue, black, blue-black, pencil, red · pen — ballpoint, gel, fountain, felt, pencil · nib width · pressure variation |
+| **Hand** | which glyph profile · size · slant · **neatness** |
+| **Page** | margins · header format — name, date, course · answer convention — boxed, double-underlined, circled |
+
+### Your notation is part of your handwriting
+
+Whether you write ∴ or "therefore", ⟹ or "=>", `m/s` or `m·s⁻¹`, whether you box the
+final answer or double-underline it — that is as personal as your letterforms, and no
+font captures it. It belongs in the profile beside the glyphs.
+
+### A profile, not a settings screen
+
+*My hand · blue gel · college-ruled · slightly rushed · ∴ notation · boxed answers* is
+one saved identity you pick once and reuse every week. Per-page settings are the thing
+you reach for when the profile is wrong for one assignment, not the thing you configure
+every time.
+
+### Re-roll at three scales
+
+Same content, new randomness — on a character, a line, or the whole page. This is
+likely the most-used control in the product: not a correction, just re-rolling until
+the page feels like you.
+
+### Decided: the page renders clean
+
+No automatic crossings-out, carets, margin notes or smudges. The page shows correct
+work with only natural jitter and drift making it handwritten.
+
+Recorded as a decision rather than an omission. The risk it accepts is that a flawless
+page is the kind most likely to read as generated, since real homework carries
+corrections. If that turns out to matter, the lever already exists — correction marks
+become primitives the *selection* can invoke, which needs no change to anything above.
 
 ## Ingest and submit: what is actually possible
 
