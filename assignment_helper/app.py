@@ -94,7 +94,19 @@ def create_app(config: ServerConfig, token: SessionToken) -> FastAPI:
         }
 
     if STATIC_DIR.joinpath("index.html").exists():
-        app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+        # Mount EVERY top-level directory the bundle produced, not a hardcoded list.
+        #
+        # This was hardcoded to /assets, and when the paint strand shipped the reference
+        # hand under public/fonts/ the bundle copied it to static/fonts/ and the server
+        # 404'd it. The page then refused to render at all — correctly and loudly, which
+        # is the only reason it took two minutes to find instead of being mistaken for
+        # "the handwriting looks a bit like a system font".
+        #
+        # Deriving the mounts from what is on disk means the next strand that adds a
+        # public/ subdirectory does not have to know this file exists.
+        for child in sorted(STATIC_DIR.iterdir()):
+            if child.is_dir():
+                app.mount(f"/{child.name}", StaticFiles(directory=child), name=child.name)
 
         @app.get("/")
         async def index() -> FileResponse:
