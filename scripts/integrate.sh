@@ -53,6 +53,15 @@ FROZEN=(
 )
 # An annotated tag, not a hardcoded sha, so re-baselining is a deliberate, recorded act.
 # Move it ONLY with a commit that says what changed in a frozen file and why.
+#
+# HONEST LIMIT OF THIS CHECK. On a project where the same person writes the strands and
+# moves the tag, it catches drift only since the last re-baseline — it cannot stop the
+# lead from amending a contract, it can only make the amendment visible and force a
+# sentence explaining it. That is still worth having (it has caught a bulk formatter and
+# four unnoticed amendments), but it is a record, not a gate against yourself.
+#
+# It also fails in CI whenever the tag has not been pushed. That is correct behaviour and
+# not a false positive: the baseline genuinely is not there.
 FREEZE_TAG=${FREEZE_TAG:-seam-freeze}
 # A missing baseline must not masquerade as "everything changed". That is exactly what
 # happened in CI: a shallow clone had no tags, git diff errored, the non-zero exit was
