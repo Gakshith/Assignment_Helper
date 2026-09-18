@@ -50,7 +50,7 @@ import { q } from './mathfns';
 import { amplitudesFor } from './params';
 import { placeLine, quantiseRect, unionRect } from './place';
 import { resolveStyle, styleHash, type ResolvedStyle } from './style';
-import { breakIntoLines, resolveText, widestWordMm, type WordMetric } from './text';
+import { breakIntoLines, resolveText, widestWordMm } from './text';
 
 /** Acceptance row 7: a block may shrink this far to fit an unbreakable token, and no further. */
 export const FIT_SCALE_FLOOR = 0.7;

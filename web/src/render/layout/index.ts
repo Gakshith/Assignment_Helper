@@ -1,4 +1,10 @@
-// OWNER: the layout strand. Replace the export; do not touch main.ts.
-import { stubLayout } from '../../app/stubs';
+// OWNER: the layout strand.
 import type { LayoutEngine } from '../../app/contracts';
-export const layoutEngine: LayoutEngine = stubLayout;
+import { layoutDocument } from './engine';
+
+export const layoutEngine: LayoutEngine = {
+  name: 'layout',
+  layout: layoutDocument,
+};
+
+export { layoutDocument, FIT_SCALE_FLOOR } from './engine';
