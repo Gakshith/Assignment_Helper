@@ -292,6 +292,7 @@ def attach(
     store: Any,
     path: Path | None,
     loader: Callable[[Path], Any],
+    llm_client: Any,
     *,
     watch_interval_s: float = POLL_INTERVAL_S,
 ) -> ConnectionHub:
@@ -301,9 +302,15 @@ def attach(
     # store's SHAPE but nothing declared who calls the registrar, so the CLI opened a
     # document and every /api/document route still answered "no document is open".
     # The seam-freeze covered the interface and missed the wiring.
+    from assignment_helper.routers.chat import set_llm_client
     from assignment_helper.routers.document import set_document_store
 
     set_document_store(app, store)
+
+    # Registered here, in the same place and at the same time as the store, because
+    # the last wave lost an entire subsystem to a registrar that one strand wrote and
+    # another never called. Both registrars now live on one screen.
+    set_llm_client(app, llm_client)
 
     hub = ConnectionHub()
     app.state.doc_store = store
@@ -456,7 +463,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     app = create_app(config, token)
 
     store, loader, seam_bypasses = build_store(path)
-    attach(app, store, path, loader)
+    from assignment_helper.llm.client import LLMClient
+    from assignment_helper.llm.keys import resolve_key
+
+    key = resolve_key(use_keyring=not args.no_keyring)
+    llm_client = LLMClient(key.key, offline=args.offline)
+    attach(app, store, path, loader, llm_client)
 
     print(
         banner(
