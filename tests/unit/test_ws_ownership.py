@@ -10,6 +10,7 @@ PROMOTION REQUIRES THE FULL RECONNECT BUDGET TO EXPIRE: 3 s x 5 = 15 s.
 from __future__ import annotations
 
 import pytest
+from support.fake_store import RecordingSocket
 
 from assignment_helper.server.ws import (
     RECONNECT_ATTEMPTS,
@@ -20,8 +21,6 @@ from assignment_helper.server.ws import (
     OwnershipRegistry,
     Role,
 )
-
-from support.fake_store import RecordingSocket
 
 
 class Clock:

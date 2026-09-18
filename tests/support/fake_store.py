@@ -15,7 +15,7 @@ This fake implements the store contract's version semantics exactly:
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from assignment_helper.document.schema import Delta, Document, ProseBlock, Snapshot
 from assignment_helper.document.store import DeltaRejected
