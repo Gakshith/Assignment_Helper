@@ -32,7 +32,9 @@ FROZEN=(
   assignment_helper/document/schema.py
   assignment_helper/document/store.py
 )
-FREEZE_TAG=${FREEZE_TAG:-f1322a7}
+# An annotated tag, not a hardcoded sha, so re-baselining is a deliberate, recorded act.
+# Move it ONLY with a commit that says what changed in a frozen file and why.
+FREEZE_TAG=${FREEZE_TAG:-seam-freeze}
 for f in "${FROZEN[@]}"; do
   if ! git diff --quiet "$FREEZE_TAG" -- "$f"; then
     echo "  CHANGED: $f — a strand edited a frozen file. This is a contract bug, not a merge."
@@ -51,6 +53,9 @@ step "4. I17 — the CV stack is unreachable from the serve and render paths"
 check .venv/bin/lint-imports
 
 step "5. Python lint"
+# NEVER run this with --fix --unsafe-fixes across the tree. Doing so once silently
+# rewrote the frozen document/schema.py (PEP 604 unions) and only check 1 noticed.
+# A formatter is as capable of editing a frozen file as a strand is.
 check $PY -m ruff check assignment_helper scripts
 
 step "6. TypeScript types"
