@@ -125,6 +125,18 @@ export interface EditorActions {
   /** Replace one block's text (prose) or LaTeX (math). One undo step. */
   editBlock(blockId: string, text: string): Promise<void>;
 
+  /**
+   * Solve the open document and replace it with the worked solutions.
+   *
+   * The product's headline verb. Returns the review verdict so the caller can refuse to
+   * present the page as finished when the model was not confident — §C.5.2 asked what
+   * happens when the answer is simply wrong, and the only honest answer available is to
+   * make the doubt visible before the page is handed in.
+   */
+  solve(): Promise<SolveOutcome>;
+  readonly solving: boolean;
+  onSolveStateChange(handler: (solving: boolean) => void): void;
+
   setStyle(style: Style): Promise<void>;
 
   /** Every AI edit and every user edit is exactly one undo step (acceptance row 19). */
@@ -145,6 +157,15 @@ export interface EditorActions {
 
 /** Re-roll at three scales — plan §C.1's M4 wording, made concrete. */
 export type RerollScale = 'block' | 'page' | 'document';
+
+export interface SolveOutcome {
+  readonly applied: boolean;
+  readonly blockCount: number;
+  /** True when any problem came back below high confidence. */
+  readonly reviewRequired: boolean;
+  readonly lowConfidence: readonly string[];
+  readonly message: string;
+}
 
 export interface ChatPanel {
   readonly name: string;

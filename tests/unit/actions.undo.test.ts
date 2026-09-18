@@ -49,6 +49,7 @@ function harness() {
     currentDoc: () => doc(),
     currentVersion: () => version,
     resync: async () => {},
+    headers: (extra = {}) => ({ ...extra }),
   });
   return { actions, sent, problems };
 }
@@ -144,6 +145,7 @@ describe('editor actions', () => {
       currentDoc: () => doc(),
       currentVersion: () => 0,
       resync: async () => {},
+    headers: (extra = {}) => ({ ...extra }),
     });
 
     await actions.editBlock('b1', 'edited');

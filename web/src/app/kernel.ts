@@ -349,6 +349,17 @@ export class Kernel {
         const snap = await subsystems.protocol.snapshot();
         this.store.adoptSnapshot(snap.version, snap.document);
       },
+      headers: (extra = {}) => {
+        const h: Record<string, string> = { ...extra };
+        let token: string | null = null;
+        try {
+          token = sessionStorage.getItem('ah.token');
+        } catch {
+          token = null;
+        }
+        if (token) h['x-ah-token'] = token;
+        return h;
+      },
     });
   }
 
@@ -396,6 +407,18 @@ export class Kernel {
     this.#outlines = hand.outlines;
 
     this.scheduler.invalidateAll();
+
+    /**
+     * Handshake with the chrome, which is a SECOND module entry (see ui/shell/index.ts:
+     * it is bootstrapped separately so that a chrome failure does not take down the
+     * app, and an app failure still has a banner to report itself in).
+     *
+     * An event rather than a shared import, because the two entries have no ordering
+     * guarantee: whichever loads second must still be able to connect. Errors continue
+     * to travel through the problem sink — this is a wiring signal, not a second error
+     * path.
+     */
+    globalThis.dispatchEvent(new CustomEvent('ah:kernel-ready', { detail: this }));
   }
 
   /**

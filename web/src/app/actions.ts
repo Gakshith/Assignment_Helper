@@ -24,6 +24,7 @@
 
 import type {
   Block,
+  SolveOutcome,
   Delta,
   Document,
   EditorActions,
@@ -52,6 +53,8 @@ export interface ActionsDeps {
   currentVersion(): number;
   /** Ask the kernel to resync after a rejected delta. */
   resync(): Promise<void>;
+  /** Request headers, so the session token (I16) is added in exactly one place. */
+  headers(extra?: Record<string, string>): Record<string, string>;
 }
 
 export class KernelActions implements EditorActions {
@@ -107,6 +110,96 @@ export class KernelActions implements EditorActions {
       inverse.push({ op: 'replace', block_id: block.id, block });
     }
     await this.#send(ops, inverse, `re-roll ${targets.length} block(s)`);
+  }
+
+  #solving = false;
+  #solveHandlers: ((solving: boolean) => void)[] = [];
+
+  get solving(): boolean {
+    return this.#solving;
+  }
+
+  onSolveStateChange(handler: (solving: boolean) => void): void {
+    this.#solveHandlers.push(handler);
+  }
+
+  #setSolving(v: boolean): void {
+    this.#solving = v;
+    for (const h of this.#solveHandlers) h(v);
+  }
+
+  async solve(): Promise<SolveOutcome> {
+    const doc = this.deps.currentDoc();
+    if (!doc) {
+      return { applied: false, blockCount: 0, reviewRequired: false, lowConfidence: [], message: 'No document is open.' };
+    }
+    if (this.#solving) {
+      return { applied: false, blockCount: 0, reviewRequired: false, lowConfidence: [], message: 'Already solving.' };
+    }
+
+    this.#setSolving(true);
+    try {
+      const res = await fetch('/api/chat/solve-document', {
+        method: 'POST',
+        headers: this.deps.headers({ 'content-type': 'application/json' }),
+        body: '{}',
+      });
+      const body = (await res.json()) as {
+        blocks?: Block[];
+        review_required?: boolean;
+        low_confidence?: string[];
+        detail?: { code?: string; message?: string };
+      };
+
+      if (!res.ok) {
+        const message = body?.detail?.message ?? `The solver failed (${res.status}).`;
+        this.deps.problems.raise({
+          scope: 'app',
+          code: body?.detail?.code ?? 'solve.failed',
+          message,
+        });
+        return { applied: false, blockCount: 0, reviewRequired: false, lowConfidence: [], message };
+      }
+
+      const blocks = body.blocks ?? [];
+      if (blocks.length === 0) {
+        const message = 'The solver returned no blocks; the document is unchanged.';
+        this.deps.problems.raise({ scope: 'app', code: 'solve.empty', message });
+        return { applied: false, blockCount: 0, reviewRequired: false, lowConfidence: [], message };
+      }
+
+      // Replace the whole document in ONE delta: remove every existing block, then
+      // insert the solved ones. One delta means one undo step (acceptance row 19), so
+      // the user can take the entire solve back with a single Cmd+Z.
+      const old = doc.blocks ?? [];
+      const forward: Op[] = [
+        ...old.map((b) => ({ op: 'remove', block_id: b.id }) as Op),
+        ...blocks.map((b, i) => ({ op: 'insert', index: i, block: b }) as Op),
+      ];
+      const inverse: Op[] = [
+        ...blocks.map((b) => ({ op: 'remove', block_id: b.id }) as Op),
+        ...old.map((b, i) => ({ op: 'insert', index: i, block: b }) as Op),
+      ];
+      await this.#send(forward, inverse, 'solve');
+
+      const reviewRequired = body.review_required === true;
+      const lowConfidence = body.low_confidence ?? [];
+      return {
+        applied: true,
+        blockCount: blocks.length,
+        reviewRequired,
+        lowConfidence,
+        message: reviewRequired
+          ? `Solved, but check problem(s) ${lowConfidence.join(', ')} — the model was not confident.`
+          : `Solved: ${blocks.length} blocks.`,
+      };
+    } catch (err) {
+      const message = `The solver could not be reached: ${String(err)}. The document is unchanged.`;
+      this.deps.problems.raise({ scope: 'app', code: 'solve.unreachable', message });
+      return { applied: false, blockCount: 0, reviewRequired: false, lowConfidence: [], message };
+    } finally {
+      this.#setSolving(false);
+    }
   }
 
   async editBlock(blockId: string, text: string): Promise<void> {

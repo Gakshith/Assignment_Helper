@@ -72,6 +72,15 @@ class SolveRequest(Strict):
     source: str
 
 
+class SolveDocumentResponse(Strict):
+    blocks: list[dict]
+    review_required: bool
+    low_confidence: list[str]
+    latex_ok: bool
+    latex_problems: str
+    source_chars: int
+
+
 @router.get("/health")
 async def health(request: Request) -> dict[str, object]:
     client = getattr(request.app.state, _CLIENT_KEY, None)
@@ -101,6 +110,94 @@ async def ask(request: Request, body: AskRequest) -> StreamingResponse:
     return StreamingResponse(events(), media_type="text/event-stream")
 
 
+@router.post("/solve-document", response_model=SolveDocumentResponse)
+async def solve_document(request: Request) -> SolveDocumentResponse:
+    """Solve the OPEN document and return the blocks that should replace it.
+
+    This is the product's headline verb — the reason it is called Assignment_Helper and
+    not markdown-to-handwriting — and for a long time the endpoint below existed with
+    nothing calling it.
+
+    It returns blocks rather than applying them. The caller sends them as one delta
+    through the editor actions, so the whole solve is exactly ONE undo step (acceptance
+    row 19) and the server stays the single source of truth (I4). Applying it here
+    would put an AI edit outside the client's history, where the user could not take it
+    back.
+    """
+    from assignment_helper.ingest.markdown import document_to_markdown
+    from assignment_helper.routers.document import get_document_store
+
+    client = _client(request)
+    store = get_document_store(request.app)
+    if store is None:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "solve.no-document",
+                "message": "No document is open. Start assignment-helper with a file.",
+            },
+        )
+
+    source = document_to_markdown(store.snapshot().document)
+    result = await _solve_source(client, source)
+    return SolveDocumentResponse(source_chars=len(source), **result)
+
+
+async def _solve_source(client: LLMClient, source: str) -> dict[str, Any]:
+    chunks: list[str] = []
+    try:
+        for ev in client.stream(
+            system=SOLVER_SYSTEM,
+            messages=[{"role": "user", "content": solve_user_message(source)}],
+            max_tokens=16000,
+        ):
+            if ev.kind == "text":
+                chunks.append(ev.text)
+    except LLMProblem as problem:
+        raise _as_http(problem) from problem
+
+    raw = "".join(chunks).strip()
+    try:
+        solution = SolutionSet.model_validate_json(_strip_fence(raw))
+    except Exception as exc:
+        # Row 19: schema-validate before applying. On failure show the RAW response and
+        # apply nothing. No partial application, ever.
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "solve.invalid-schema",
+                "message": "The model's answer did not match the solution schema. Nothing was applied.",
+                "raw": raw[:4000],
+            },
+        ) from exc
+
+    report = validate_solution(solution)
+    built = solution_to_blocks(solution)
+    return {
+        "blocks": [b.model_dump() for b in built.blocks],
+        "review_required": built.review_required,
+        "low_confidence": built.low_confidence,
+        "latex_ok": report.ok,
+        "latex_problems": report.summary() if not report.ok else "",
+    }
+
+
+def _strip_fence(raw: str) -> str:
+    """Models wrap JSON in a ```json fence often enough to be worth handling here.
+
+    Not a silent repair: if the fence is the only problem the parse succeeds, and if
+    anything else is wrong the caller still sees the raw response verbatim.
+    """
+    text = raw.strip()
+    if text.startswith("```"):
+        newline = text.find("\n")
+        if newline != -1:
+            text = text[newline + 1 :]
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3]
+    return text.strip()
+
+
 @router.post("/solve")
 async def solve(request: Request, body: SolveRequest) -> dict[str, Any]:
     """Solve a problem set and return blocks, NOT a document.
@@ -124,10 +221,8 @@ async def solve(request: Request, body: SolveRequest) -> dict[str, Any]:
 
     raw = "".join(chunks).strip()
     try:
-        solution = SolutionSet.model_validate_json(raw)
+        solution = SolutionSet.model_validate_json(_strip_fence(raw))
     except Exception as exc:
-        #  Row 19: schema-validate before applying. On failure show the RAW response and
-        #  apply nothing. No partial application, ever.
         raise HTTPException(
             status_code=422,
             detail={
