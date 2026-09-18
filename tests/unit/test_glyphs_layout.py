@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 import pytest
 
 from assignment_helper.glyphs import layout, paths
@@ -41,7 +43,7 @@ def test_cells_do_not_overlap_and_stay_on_the_page() -> None:
         assert 0 <= cell.left < cell.right <= layout.PAGE_W_PX
         assert 0 <= cell.top < cell.bottom <= layout.PAGE_H_PX
 
-    for a, b in zip(cells, cells[1:], strict=False):
+    for a, b in itertools.pairwise(cells):
         if a.row == b.row:
             assert a.right <= b.left + 1e-6
 

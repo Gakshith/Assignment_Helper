@@ -15,12 +15,13 @@ from __future__ import annotations
 import json
 
 import pytest
+from support import synthetic_sheet as synth
 
 from assignment_helper.glyphs import outline as outline_mod
-from assignment_helper.glyphs import pipeline, profile as profile_mod, rectify, segment
+from assignment_helper.glyphs import pipeline, rectify, segment
+from assignment_helper.glyphs import profile as profile_mod
 from assignment_helper.glyphs.charset import CHARSET
 from assignment_helper.glyphs.errors import MarkersNotFound, SheetUnreadable
-from support import synthetic_sheet as synth
 
 
 @pytest.fixture(scope="module")
@@ -225,7 +226,9 @@ def test_row24_off_axis_sheets(tmp_path, monkeypatch, angle, shadow, must_pass) 
         assert not list(tmp_path.rglob("glyphs.json"))
         return
 
-    assert must_pass or True  # a pass beyond spec is a bonus, not a failure
+    # No assertion on `must_pass` here on purpose: extraction succeeding at an angle
+    # beyond spec is a bonus, not a failure. It was written as `assert must_pass or
+    # True`, which reads like a check and can never fail.
     assert result.viable_ratio >= 0.60, (
         f"{angle} deg recovered only {result.viable_ratio:.0%} of the charset"
     )

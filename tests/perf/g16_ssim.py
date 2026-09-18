@@ -4,7 +4,7 @@ Run `tests/perf/g16.mjs` first; it writes the two PNGs this reads.
 
     ≥ 0.97 passes, < 0.95 is a hard fail.
 
-**The downsample kernel is stated, because it alone moves SSIM by 0.02–0.05.** Lanczos
+**The downsample kernel is stated, because it alone moves SSIM by 0.02-0.05.** Lanczos
 is used: it is what a print pipeline would do, and picking the kernel that flatters the
 result is how a parity gate becomes decoration.
 
@@ -16,7 +16,6 @@ painted at two resolutions, puts ink in the same PLACE.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 TMP = Path("/Users/gojuruakshith/.claude/jobs/7f9afd6b/tmp")

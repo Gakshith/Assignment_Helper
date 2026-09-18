@@ -47,7 +47,7 @@ class TrueMetrics:
 def _font_for_cell(cell: layout.CellBox, font_path: Path):
     from PIL import ImageFont
 
-    return ImageFont.truetype(str(font_path), size=int(round(cell.em_px)))
+    return ImageFont.truetype(str(font_path), size=round(cell.em_px))
 
 
 def font_covers(font_path: Path) -> set[str]:

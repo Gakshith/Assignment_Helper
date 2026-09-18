@@ -85,7 +85,7 @@ step "5. Python lint"
 # NEVER run this with --fix --unsafe-fixes across the tree. Doing so once silently
 # rewrote the frozen document/schema.py (PEP 604 unions) and only check 1 noticed.
 # A formatter is as capable of editing a frozen file as a strand is.
-check $PY -m ruff check assignment_helper scripts
+check $PY -m ruff check assignment_helper scripts tests
 
 step "6. TypeScript types"
 check npx tsc --noEmit

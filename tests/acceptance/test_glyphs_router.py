@@ -11,11 +11,11 @@ import time
 
 import pytest
 from fastapi.testclient import TestClient
-
-from assignment_helper.glyphs.layout import CELLS_PER_PAGE
-from assignment_helper.app import ServerConfig, create_app
-from assignment_helper.security import SessionToken
 from support import synthetic_sheet as synth
+
+from assignment_helper.app import ServerConfig, create_app
+from assignment_helper.glyphs.layout import CELLS_PER_PAGE
+from assignment_helper.security import SessionToken
 
 
 @pytest.fixture

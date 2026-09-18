@@ -50,7 +50,7 @@ def test_a_base64_crop_round_trips_to_the_original_png():
     # an error that produces a confident answer about nothing.
     png = b"\x89PNG\r\n\x1a\n" + bytes(range(64))
     payload = ChatPayload(question="q", image_crop_png=base64.b64encode(png).decode())
-    image = [c for c in payload.to_messages()[0]["content"] if c["type"] == "image"][0]
+    image = next(c for c in payload.to_messages()[0]["content"] if c["type"] == "image")
     assert image["source"]["media_type"] == "image/png"
     assert base64.b64decode(image["source"]["data"]) == png
 
