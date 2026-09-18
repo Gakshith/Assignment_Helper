@@ -122,7 +122,11 @@ step "10. The bundle builds"
 check npm run build
 
 step "11. No handwriting sample, personal font or build artifact is tracked"
-if git ls-files | grep -E '^(samples/|out/|fonts/personal/)|\.(ttf|otf)$' | grep -vE '^(web/public/fonts/reference/|spikes/m0/fonts/)'; then
+# node_modules is in this list because a TRACKED node_modules symlink was committed by
+# a `git add -A` in a worktree, and every merge afterwards restored it OVER the real
+# directory - which made tsc and vitest emit nothing at all. It cost two debugging
+# rounds before the cause was visible.
+if git ls-files | grep -E '^(samples/|out/|fonts/personal/|node_modules)|\.(ttf|otf)$' | grep -vE '^(web/public/fonts/reference/|spikes/m0/fonts/)'; then
   echo "  FAILED: the files above must never be committed — this repo is public."; fail=1
 else
   echo "  ok"
