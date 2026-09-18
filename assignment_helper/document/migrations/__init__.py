@@ -106,10 +106,10 @@ def find_backup(document_path: Path | str) -> Path | None:
 def _too_new_message(document_path: Path | None, found: int, supported: int) -> str:
     name = document_path.name if document_path is not None else "This document"
     lines = [
-        f"{name} was written by a NEWER build of assignment-helper "
-        f"(schema_version {found}; this build understands {supported}).",
-        "It was not opened. Migrations only run forwards, so opening it here would "
-        "either lose fields this build does not know about or corrupt the file.",
+        (f"{name} was written by a NEWER build of assignment-helper "
+        f"(schema_version {found}; this build understands {supported})."),
+        ("It was not opened. Migrations only run forwards, so opening it here would "
+        "either lose fields this build does not know about or corrupt the file."),
         "",
     ]
     backup = find_backup(document_path) if document_path is not None else None

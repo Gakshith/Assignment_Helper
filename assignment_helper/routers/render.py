@@ -187,8 +187,8 @@ def authorize_websocket(
     if host and host not in hosts:
         return (
             "auth.host-not-allowed",
-            f"Host {host!r} is not an allowed local host. "
-            "This is the DNS-rebinding defence; it is working as intended.",
+            (f"Host {host!r} is not an allowed local host. "
+            "This is the DNS-rebinding defence; it is working as intended."),
         )
 
     origin = headers.get("origin")
@@ -207,8 +207,8 @@ def authorize_websocket(
     if not token.matches(presented):
         return (
             "auth.bad-token",
-            "Missing or invalid session token on the websocket handshake. Open the URL "
-            "the CLI printed; the token is per-session and dies when the server stops.",
+            ("Missing or invalid session token on the websocket handshake. Open the URL "
+            "the CLI printed; the token is per-session and dies when the server stops."),
         )
     return None
 
@@ -339,7 +339,7 @@ async def _handle_client_message(
 
     try:
         delta = Delta.model_validate(message.get("delta"))
-    except Exception as exc:  # noqa: BLE001 - reported to the client, never swallowed
+    except Exception as exc:
         await websocket.send_json(
             {
                 "type": "nack",

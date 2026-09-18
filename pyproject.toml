@@ -54,6 +54,15 @@ packages = ["assignment_helper"]
 line-length = 100
 target-version = "py313"
 
+[tool.ruff.lint]
+# Deliberate, not inherited. ISC is kept because ISC004 catches a missing comma in a
+# list silently concatenating two entries into one - a real bug class, not a style nit.
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "ISC", "RUF"]
+ignore = [
+  "SIM102",  # nested ifs are often clearer when each tests a different concern
+  "E501",    # line-length is enforced by the formatter, not by a second opinion
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
@@ -61,6 +70,8 @@ asyncio_mode = "auto"
 # I17 enforcement. The render and serve paths must not import the CV stack.
 [tool.importlinter]
 root_package = "assignment_helper"
+# Required because the forbidden modules (cv2, numpy, ...) are external packages.
+include_external_packages = true
 
 [[tool.importlinter.contracts]]
 name = "The CV stack is never reachable from the serve or render path"

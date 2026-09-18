@@ -86,8 +86,8 @@ from assignment_helper.document.schema import (
 from assignment_helper.rng import fnv1a64, splitmix64
 
 __all__ = [
-    "MarkdownSerialiseError",
     "SPACER_HEIGHT_MM",
+    "MarkdownSerialiseError",
     "document_to_markdown",
     "parse_markdown",
     "seed_for_block",

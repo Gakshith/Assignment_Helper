@@ -107,7 +107,9 @@ async def ingest_file(request: Request, body: FileRequest) -> Snapshot:
             "PDF or an image, that is a different ingest path and it is not built yet.",
         ) from exc
     except OSError as exc:
-        raise _fail(500, "ingest.unreadable", f"Could not read {path}: {exc.strerror or exc}.")
+        raise _fail(
+            500, "ingest.unreadable", f"Could not read {path}: {exc.strerror or exc}."
+        ) from exc
 
     document_path = document_path_for(path)
     try:

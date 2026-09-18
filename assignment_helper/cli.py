@@ -22,15 +22,17 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import platform
 import sys
 import threading
 import tomllib
 import webbrowser
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from importlib import metadata
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 import uvicorn
 
@@ -200,6 +202,7 @@ def banner(
     bypasses: Sequence[str],
     *,
     colour: bool,
+    print_url: bool = False,
 ) -> str:
     red = RED if colour else ""
     bold = BOLD if colour else ""
@@ -215,7 +218,12 @@ def banner(
             lines.append(f"{red}      the working tree has uncommitted changes{reset}")
     lines.append(f"  document   {document_path if document_path else '(none)'}")
     lines.append(f"  server     http://{HOST}:{config.port}/")
-    lines.append(f"{dim}             (the session token is sent to the browser, never printed){reset}")
+    token_note = (
+        "(the session token is printed below: --print-url)"
+        if print_url
+        else "(the session token is sent to the browser, never printed)"
+    )
+    lines.append(f"{dim}             {token_note}{reset}")
     if bypasses:
         lines.append(f"{bold}  bypasses{reset}")
         for item in bypasses:
@@ -228,45 +236,55 @@ def banner(
 # ---------------------------------------------------------------- wiring
 
 
+def load_source(path: Path) -> Any:
+    """A file on disk -> a Document. This is the product's primary input path.
+
+    Plan §C.5.1: a red-team found that nothing anywhere parsed a file from disk while
+    the CLI's own example was `assignment-helper hw7.md`. It is wired HERE, explicitly,
+    so that it cannot quietly stop being used.
+    """
+    from assignment_helper.ingest.markdown import parse_markdown
+
+    text = path.read_text(encoding="utf-8")
+    return parse_markdown(text, doc_id=path.stem, source_path=str(path))
+
+
+def store_path_for(path: Path) -> Path:
+    """`<name>.ah.json` beside the user's source file.
+
+    It is the user's work: it belongs in their Time Machine and is diffable in git.
+    """
+    if path.suffix == ".json" and path.name.endswith(".ah.json"):
+        return path
+    return path.with_name(f"{path.stem}.ah.json")
+
+
 def build_store(path: Path) -> tuple[Any, Callable[[Path], Any], list[str]]:
     """Returns (store, loader, bypass lines).
 
-    The real FileDocumentStore and the real markdown loader belong to other strands.
-    When they are importable they are used; when they are not, the labelled fallbacks
-    are used AND ANNOUNCED. Never a silent substitution (I5).
+    These imports are DELIBERATELY UNGUARDED. An earlier version guarded them with
+    `except ImportError` and fell back to an in-memory store and a plain-text loader,
+    because at the time the strand was written neither module existed yet. Once both
+    landed, that guard became the bug it was meant to prevent: `load_document` was never
+    a real name in `ingest.markdown`, so the import always failed, the CLI always took
+    the fallback, and the markdown parser - the whole of §C.5.1 - was dead code in the
+    shipped product. The bypass banner made it visible rather than silent, which is the
+    only reason it was survivable.
+
+    Both modules ship inside this same wheel. If either is missing, that is an
+    installation fault and it must be LOUD, not routed around.
     """
-    bypasses: list[str] = []
+    from assignment_helper.document.filestore import FileDocumentStore
 
-    try:
-        from assignment_helper.document.filestore import FileDocumentStore  # type: ignore
-    except ImportError:
-        FileDocumentStore = None  # noqa: N806
-
-    try:
-        from assignment_helper.ingest.markdown import load_document  # type: ignore
-    except ImportError:
-        load_document = None
-
-    from assignment_helper.server.fallback import (
-        FALLBACK_LOADER_BYPASS,
-        FALLBACK_STORE_BYPASS,
-        MemoryDocumentStore,
-        load_plain,
-    )
-
-    if load_document is None:
-        loader: Callable[[Path], Any] = load_plain
-        bypasses.append(f"(seam)               {FALLBACK_LOADER_BYPASS}")
+    ah_path = store_path_for(path)
+    if ah_path.exists():
+        # Migrates forward, or raises DocumentTooNew naming the .bak-v<n> and the
+        # command to restore it (acceptance row 10).
+        store = FileDocumentStore.open(ah_path)
     else:
-        loader = load_document
+        store = FileDocumentStore.create(ah_path, load_source(path))
 
-    if FileDocumentStore is None:
-        store = MemoryDocumentStore(loader(path))
-        bypasses.append(f"(seam)               {FALLBACK_STORE_BYPASS}")
-    else:
-        store = FileDocumentStore(path)
-
-    return store, loader, bypasses
+    return store, load_source, []
 
 
 def attach(
@@ -278,6 +296,15 @@ def attach(
     watch_interval_s: float = POLL_INTERVAL_S,
 ) -> ConnectionHub:
     """Everything app.py (frozen) does not do, done from out here."""
+    # Register the store with the routers that serve it. Two strands built these halves
+    # in parallel against the frozen DocumentStore Protocol; the Protocol fixed the
+    # store's SHAPE but nothing declared who calls the registrar, so the CLI opened a
+    # document and every /api/document route still answered "no document is open".
+    # The seam-freeze covered the interface and missed the wiring.
+    from assignment_helper.routers.document import set_document_store
+
+    set_document_store(app, store)
+
     hub = ConnectionHub()
     app.state.doc_store = store
     app.state.hub = hub
@@ -293,7 +320,11 @@ def attach(
             # I5: a watcher thread that dies silently looks exactly like a file that
             # never changes. Say so, and keep polling.
             print(f"[watch] {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
-            try:
+            # NOT an I5 violation, and spelled out so a reader can tell the difference:
+            # the stderr line above is the primary, unconditional record. This second
+            # channel is a best-effort push to a UI that may not be listening yet (no
+            # running event loop raises RuntimeError). Losing it loses no information.
+            with contextlib.suppress(RuntimeError):
                 hub.dispatch_threadsafe(
                     {
                         "type": "problem",
@@ -305,8 +336,6 @@ def attach(
                         },
                     }
                 )
-            except RuntimeError:
-                pass  # no loop yet; the stderr line above is the record
 
         watcher = FileWatcher(
             path,
@@ -329,8 +358,13 @@ def attach(
             watcher_.stop()
         await hub.stop()
 
-    app.add_event_handler("startup", _startup)
-    app.add_event_handler("shutdown", _shutdown)
+    # Starlette 1.x removed FastAPI.add_event_handler. The router's on_startup /
+    # on_shutdown lists are still the supported way to register a lifecycle hook from
+    # OUTSIDE app construction, which is what this needs: create_app() is frozen
+    # (plan §3) and takes no lifespan argument. Deliberately not app.on_event, which
+    # is deprecated and emits a warning on every launch.
+    app.router.on_startup.append(_startup)
+    app.router.on_shutdown.append(_shutdown)
     return hub
 
 
@@ -339,7 +373,7 @@ def open_browser(url: str, browser: str | None, *, opener=webbrowser) -> bool:
     try:
         controller = opener.get(browser) if browser else opener
         return bool(controller.open(url))
-    except Exception as exc:  # noqa: BLE001 - reported, and the caller prints a fallback
+    except Exception as exc:
         print(f"could not open a browser: {type(exc).__name__}: {exc}", file=sys.stderr)
         return False
 
@@ -425,13 +459,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     attach(app, store, path, loader)
 
     print(
-        banner(version, config, path, active_bypasses(args, seam_bypasses), colour=colour),
+        banner(
+            version,
+            config,
+            path,
+            active_bypasses(args, seam_bypasses),
+            colour=colour,
+            print_url=args.print_url,
+        ),
         flush=True,
     )
 
     url = f"http://{HOST}:{port}/?t={token.value}"
     if args.print_url:
-        print(f"  url        {url}")
+        # flush=True matters: the server below never returns, so an unflushed stdout
+        # buffer holds this line forever and --print-url silently does nothing.
+        print(f"  url        {url}", flush=True)
 
     if not args.no_browser:
         def launch() -> None:
@@ -451,10 +494,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     server = uvicorn.Server(
         uvicorn.Config(app, host=HOST, port=port, log_level="warning", access_log=False)
     )
-    try:
+    with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(server.serve())
-    except KeyboardInterrupt:
-        pass
     return 0
 
 

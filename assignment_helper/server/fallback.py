@@ -16,8 +16,8 @@ on blank lines. It is a placeholder that says so.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from assignment_helper.document.schema import Delta, Document, ProseBlock, Snapshot
 from assignment_helper.document.store import DeltaRejected

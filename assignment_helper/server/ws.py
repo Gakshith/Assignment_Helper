@@ -26,10 +26,12 @@ so the 4-second blip and the 15-second expiry are both testable without sleeping
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable, Protocol
+from enum import StrEnum
+from typing import Any, Protocol
 
 # I6, stated once, for both runtimes. web/src/app/protocol.ts carries the same numbers
 # and tests/unit/protocol.test.ts asserts them.
@@ -40,7 +42,7 @@ RECONNECT_BUDGET_S = RECONNECT_DELAY_S * RECONNECT_ATTEMPTS  # 15.0
 DISCONNECT_BANNER = "disconnected from the local server"
 
 
-class Role(str, Enum):
+class Role(StrEnum):
     OWNER = "owner"
     READER = "reader"
 
@@ -226,10 +228,8 @@ class ConnectionHub:
         task, self._sweeper = self._sweeper, None
         if task is not None:
             task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await task
-            except asyncio.CancelledError:
-                pass
 
     async def _sweep_forever(self) -> None:
         while True:
@@ -343,7 +343,7 @@ class ConnectionHub:
     async def _send(self, conn: Connection, message: dict[str, Any]) -> None:
         try:
             await conn.socket.send_json(message)
-        except Exception as exc:  # noqa: BLE001 - re-raised as a named, visible drop
+        except Exception as exc:
             # I5: not swallowed. A socket that cannot be written to is a socket that has
             # gone away, and the registry has to hear about it or the owner slot leaks.
             print(

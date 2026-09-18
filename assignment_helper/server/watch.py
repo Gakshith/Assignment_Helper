@@ -21,9 +21,10 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 from assignment_helper.document.schema import Document, Snapshot
 
@@ -108,7 +109,7 @@ class FileWatcher:
         while not self._stop.wait(self._interval):
             try:
                 self.poll_once()
-            except Exception as exc:  # noqa: BLE001 - surfaced, never swallowed
+            except Exception as exc:
                 # I5: an exception in a daemon thread kills the thread in total silence
                 # and the watcher just stops working. Route it out and keep polling.
                 self._on_error(exc)

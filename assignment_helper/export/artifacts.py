@@ -86,7 +86,7 @@ def perspective_coefficients(
 def _solve(a: list[list[float]], b: list[float]) -> list[float]:
     """Dense linear solve, partial pivoting. n is always 8 here."""
     n = len(b)
-    m = [row[:] + [b[i]] for i, row in enumerate(a)]
+    m = [[*row[:], b[i]] for i, row in enumerate(a)]
 
     for col in range(n):
         pivot = max(range(col, n), key=lambda r: abs(m[r][col]))
@@ -188,10 +188,7 @@ def _edge_shadow(img: Image.Image, rng: random.Random, params: ArtifactParams) -
     width_frac = max(0.01, min(0.5, params.edge_shadow_width))
     # Hold the ramp inside a band and leave the rest of the page untouched.
     band = max(2, int(steps * width_frac / 0.5))
-    if flip:
-        stops = [255] * (steps - band) + ramp[-band:]
-    else:
-        stops = ramp[:band] + [255] * (steps - band)
+    stops = [255] * (steps - band) + ramp[-band:] if flip else ramp[:band] + [255] * (steps - band)
 
     mask = _gradient_mask(img.size, stops, horizontal=horizontal)
     return ImageChops.multiply(img, Image.merge("RGB", (mask, mask, mask)))

@@ -48,7 +48,7 @@ step "3. Python tests"
 check $PY -m pytest tests -q
 
 step "4. I17 — the CV stack is unreachable from the serve and render paths"
-check $PY -m lint_imports
+check .venv/bin/lint-imports
 
 step "5. Python lint"
 check $PY -m ruff check assignment_helper scripts
@@ -69,7 +69,9 @@ else
 fi
 
 step "9. I5 — no silent failure"
-if grep -rnE 'except\s*:\s*pass|except Exception:\s*pass' assignment_helper/ 2>/dev/null; then
+# Catches `except: pass` AND the typed form `except ValueError:\n    pass`, which the
+# first version of this grep missed and ruff's SIM105 found for us.
+if grep -rnzoE 'except[^\n]*:\n[[:space:]]*pass' assignment_helper/ 2>/dev/null | tr '\\0' '\\n' | grep -q .; then
   echo "  FAILED: a swallowed exception above (invariant I5)."; fail=1
 elif grep -rnE 'catch\s*\([^)]*\)\s*\{\s*\}' web/src/ 2>/dev/null; then
   echo "  FAILED: an empty catch above (invariant I5)."; fail=1

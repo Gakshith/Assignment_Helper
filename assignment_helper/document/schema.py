@@ -13,7 +13,7 @@ It must not know about: rendering, canvas, fonts, the LLM, HTTP.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -58,7 +58,7 @@ class BoxedBlock(Strict):
     kind: Literal["boxed"] = "boxed"
     id: str
     seed: int
-    children: list["Block"]
+    children: list[Block]
 
 
 class SpacerBlock(Strict):
@@ -69,7 +69,7 @@ class SpacerBlock(Strict):
 
 
 Block = Annotated[
-    Union[ProseBlock, MathBlock, DiagramBlock, BoxedBlock, SpacerBlock],
+    ProseBlock | MathBlock | DiagramBlock | BoxedBlock | SpacerBlock,
     Field(discriminator="kind"),
 ]
 
@@ -142,7 +142,7 @@ class SetStyle(Strict):
     style: Style
 
 
-Op = Annotated[Union[InsertBlock, RemoveBlock, ReplaceBlock, SetStyle], Field(discriminator="op")]
+Op = Annotated[InsertBlock | RemoveBlock | ReplaceBlock | SetStyle, Field(discriminator="op")]
 
 
 class Delta(Strict):
