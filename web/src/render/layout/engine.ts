@@ -48,6 +48,7 @@ import { fnv1a64, splitmix64 } from '../rng';
 import type { Block, Document, Style } from '../../types/document';
 import { q } from './mathfns';
 import { typesetMath } from './math';
+import { compileDiagram } from './diagram';
 import { amplitudesFor } from './params';
 import { placeLine, quantiseRect, unionRect } from './place';
 import { resolveStyle, styleHash, type ResolvedStyle } from './style';
@@ -371,14 +372,46 @@ class LayoutRun {
       case 'diagram': {
         // Nothing resumes a line across this.
         this.#inline = null;
-        // The figures strand fills this in. Until then the height is reserved so the rest
-        // of the page is already correct, and the badge says why the space is empty.
         const box = this.#reserve(block.height_mm ?? 40);
-        problems.push({
-          code: 'diagram.not-implemented',
-          message: `Diagrams are not drawn yet; ${box.hMm.toFixed(1)} mm is reserved for this one.`,
+        const compiled = compileDiagram(block.spec ?? [], box.xMm, box.yMm, block.id);
+        problems.push(...compiled.problems);
+
+        const frag = this.#fragmentFor(frags);
+        frag.figures.push(...compiled.figures);
+        frag.box = unionRect(frag.box, box);
+
+        // Labels are TEXT, so they go through the same glyph path as everything else —
+        // a diagram label in a different hand from the prose beside it would be the
+        // most obvious tell on the page.
+        compiled.labels.forEach((label, i) => {
+          const resolved = resolveText(label.text, this.#metrics, this.#rs.sizeMm, null);
+          const placed = placeLine({
+            blockId: block.id,
+            lineIndex: i,
+            line: { words: resolved.words[0] ?? [], nominalWidthMm: 0 },
+            baselineYMm: label.yMm,
+            xStartMm: label.xMm,
+            columnWidthMm: this.#column.wMm,
+            sizeMm: this.#rs.sizeMm,
+            spaceWidthMm: resolved.spaceWidthMm,
+            seed,
+            amps: amplitudesFor(this.#rs, charsBefore),
+            baseSlantDeg: this.#rs.slantDeg,
+            charOrdinal: 0,
+            metrics: this.#metrics,
+          });
+          frag.lines.push(placed.geometry);
+          if (placed.inkBox) frag.box = unionRect(frag.box, placed.inkBox);
         });
-        this.#emit({ blockId: block.id, kind: 'diagram', frags: [], problems, fitScale: 1, fallbackBox: box });
+
+        if (compiled.figures.length === 0 && compiled.labels.length === 0) {
+          problems.push({
+            code: 'diagram.empty',
+            message: `This diagram has no drawable primitives; ${box.hMm.toFixed(1)} mm is reserved and blank.`,
+          });
+        }
+
+        this.#emit({ blockId: block.id, kind: 'diagram', frags, problems, fitScale: 1, fallbackBox: box });
         return;
       }
 

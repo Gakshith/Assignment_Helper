@@ -258,3 +258,64 @@ describe('a boxed answer is one line, not a two-row frame', () => {
     expect(box.boxMm.hMm).toBeLessThan(18);
   });
 });
+
+describe('diagram blocks draw', () => {
+  const spec = [
+    { kind: 'arrow', points: [[0, 10], [30, 10]] },
+    { kind: 'circle', center: [40, 10], r: 6 },
+    { kind: 'rect', at: [0, 20], w: 25, h: 10 },
+    { kind: 'label', at: [10, 8], text: 'F' },
+  ];
+
+  function doc(s: unknown[]): Document {
+    return {
+      schema_version: 1,
+      id: 'd',
+      blocks: [{ kind: 'diagram', id: 'fig1', seed: 3, spec: s as never, height_mm: 40 }],
+    };
+  }
+
+  it('compiles primitives into figures in PAGE coordinates', () => {
+    const block = layoutDocument(doc(spec), STYLE, metrics).pages[0]!.blocks[0]!;
+    expect(block.problem).toBeUndefined();
+    const kinds = block.figures.map((f) => f.kind).sort();
+    expect(kinds).toEqual(['arrow', 'circle', 'rect']);
+    // Spec coordinates are relative to the block; the emitted ones are absolute, so
+    // they must have been shifted past the page's left margin.
+    for (const f of block.figures) {
+      for (const [x, y] of f.pointsMm) {
+        expect(x).toBeGreaterThan(0);
+        expect(y).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('labels go through the glyph path, not a separate text renderer', () => {
+    // A diagram label in a different hand from the prose beside it is the most obvious
+    // tell on the page.
+    const block = layoutDocument(doc(spec), STYLE, metrics).pages[0]!.blocks[0]!;
+    const chars = block.lines.flatMap((l) => l.glyphs.map((g) => g.ch));
+    expect(chars).toContain('F');
+  });
+
+  it('an unknown primitive is badged, never silently dropped', () => {
+    // A diagram that quietly loses the one arrow carrying the meaning still looks
+    // like a diagram.
+    const block = layoutDocument(doc([{ kind: 'spiral', points: [[0, 0]] }]), STYLE, metrics)
+      .pages[0]!.blocks[0]!;
+    expect(block.problem?.code).toBe('diagram.unknown-primitive');
+  });
+
+  it('a malformed primitive is badged with its index', () => {
+    const block = layoutDocument(doc([{ kind: 'circle', center: [1, 1] }]), STYLE, metrics)
+      .pages[0]!.blocks[0]!;
+    expect(block.problem?.code).toBe('diagram.bad-primitive');
+    expect(block.problem?.message).toContain('index 0');
+  });
+
+  it('an empty diagram reserves its height and says it is blank', () => {
+    const block = layoutDocument(doc([]), STYLE, metrics).pages[0]!.blocks[0]!;
+    expect(block.problem?.code).toBe('diagram.empty');
+    expect(block.boxMm.hMm).toBeGreaterThanOrEqual(39);
+  });
+});
