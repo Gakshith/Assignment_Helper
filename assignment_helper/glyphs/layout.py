@@ -47,9 +47,15 @@ UNITS_PER_EM = 1000
 MARKER_PX = 200
 MARKER_MARGIN_PX = 90
 
-#: The writing grid. 9 x 10 = 90 cells, one full charset repeat per page.
-COLS = 9
-ROWS = 10
+#: The writing grid. 11 x 12 = 132 cells, one full charset repeat per page.
+#:
+#: Was 9 x 10 = 90, sized for a Latin-only charset. Adding Greek and the maths
+#: operators took the charset to 132, and the alternative — more PAGES — was the wrong
+#: trade: M2's gate is "build your profile in under ten minutes", and a fifth and sixth
+#: sheet costs the student far more than a slightly smaller cell costs the segmenter.
+#: At Letter/300dpi this leaves roughly 17 mm per cell, still generous for one glyph.
+COLS = 11
+ROWS = 12
 CELLS_PER_PAGE = COLS * ROWS
 
 #: The grid's bounding box on the page, chosen to clear the markers top and bottom.
@@ -129,10 +135,11 @@ class CellBox:
         """The crop rect (x0, y0, x1, y1) used for segmentation, clamped to the page."""
         pad_x = self.width * CELL_PAD_FRAC
         pad_y = self.height * CELL_PAD_FRAC
-        x0 = max(0, int(round(self.left - pad_x)))
-        y0 = max(0, int(round(self.top - pad_y)))
-        x1 = min(PAGE_W_PX, int(round(self.right + pad_x)))
-        y1 = min(PAGE_H_PX, int(round(self.bottom + pad_y)))
+        # round() already returns an int for a float argument.
+        x0 = max(0, round(self.left - pad_x))
+        y0 = max(0, round(self.top - pad_y))
+        x1 = min(PAGE_W_PX, round(self.right + pad_x))
+        y1 = min(PAGE_H_PX, round(self.bottom + pad_y))
         return x0, y0, x1, y1
 
 

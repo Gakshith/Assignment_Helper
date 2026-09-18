@@ -12,22 +12,25 @@ from assignment_helper.glyphs.errors import ProfileWriteError
 def test_charset_exactly_fills_a_page() -> None:
     """The guard that stops a 91st character being silently sliced away."""
     assert_charset_fits()
-    assert len(CHARSET) == layout.CELLS_PER_PAGE == 90
+    # Derived, not hardcoded: the grid is a design parameter. It grew from 9x10=90
+    # to 11x12=132 when Greek and the maths operators joined the charset.
+    assert len(CHARSET) == layout.CELLS_PER_PAGE
 
 
 def test_assert_charset_fits_checks_the_charset_it_is_given() -> None:
     """Regression: it used to validate the global set no matter what it was passed,
     which made it useless for exactly the custom set it was meant to guard."""
-    with pytest.raises(ValueError, match="89 characters"):
-        assert_charset_fits(CHARSET[:89])
+    short = len(CHARSET) - 1
+    with pytest.raises(ValueError, match=f"{short} characters"):
+        assert_charset_fits(CHARSET[:short])
     with pytest.raises(ValueError, match="duplicates"):
-        assert_charset_fits(["a"] * 90)
+        assert_charset_fits(["a"] * layout.CELLS_PER_PAGE)
 
 
 def test_every_page_has_a_full_grid_of_cells() -> None:
     for page in range(REPEATS):
         cells = layout.cells_for_page(CHARSET, page)
-        assert len(cells) == 90
+        assert len(cells) == layout.CELLS_PER_PAGE
         assert [c.ch for c in cells] == CHARSET
         assert {c.repeat for c in cells} == {page}
 

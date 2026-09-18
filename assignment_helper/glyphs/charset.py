@@ -1,9 +1,19 @@
 """Which characters the tracing sheet asks for, and what stands in for the rest.
 
-90 cells per page, four pages, so 90 characters x 4 repeats. The set is chosen to
-cover ordinary English prose and the punctuation that shows up in homework; anything
-outside it is handled by `SUBSTITUTIONS` or raises a Problem at layout time
-(acceptance row 5 — never a blank, never tofu).
+Anything outside the set is handled by `SUBSTITUTIONS` or raises a Problem at layout
+time (acceptance row 5 — never a blank, never tofu).
+
+**Greek is in the set, and that is not decoration.** Measured on 2026-09-17 against all
+three OFL hands shipped with this project: Caveat has 1 codepoint in the Greek block,
+Reenie Beanie 4, Shadows Into Light 0, and none of them has alpha, tau or theta. Plan
+§C.2 claimed outline-first "makes any permissively-licensed handwriting font a valid
+shipped reference hand, immediately, free" — true for prose, false for maths, which is
+the milestone that needs it most. It surfaced the moment a real physics assignment was
+rendered and the first expression wanted a tau.
+
+A student's own hand fixes this completely, because they write their own alpha and tau
+— but ONLY if this sheet asks for them. Until then the reference hand badges the block
+and the maths is visibly incomplete. See docs/decisions.md.
 
 No CV stack here, at module scope or otherwise.
 """
@@ -15,8 +25,17 @@ UPPERCASE = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 DIGITS = list("0123456789")
 PUNCTUATION = list(".,;:!?'\"()[]-–—/&@#%*+=<>$_~")
 
-#: Exactly 90 entries, filling one page's 9x10 grid with no blanks.
-CHARSET: list[str] = LOWERCASE + UPPERCASE + DIGITS + PUNCTUATION
+#: The Greek a physics problem set actually uses. Not the whole alphabet: every cell
+#: is 8-15 seconds of the student's time, and omicron is indistinguishable from o.
+GREEK_LOWER = list("αβγδεθλμνπρστφωψ")
+GREEK_UPPER = list("ΓΔΘΛΠΣΦΩ")
+
+#: Operators that appear in worked solutions and that no handwriting font carries.
+MATH_SYMBOLS = list("±∓·×÷≈≠≡≤≥∞∝∫∑√∂∈→")
+
+CHARSET: list[str] = (
+    LOWERCASE + UPPERCASE + DIGITS + PUNCTUATION + GREEK_LOWER + GREEK_UPPER + MATH_SYMBOLS
+)
 
 #: How many times each character is asked for. One repeat per page.
 REPEATS = 4
@@ -32,8 +51,6 @@ SUBSTITUTIONS: dict[str, str] = {
     "“": '"',  # left double quote
     "”": '"',  # right double quote
     "′": "'",  # prime
-    "×": "*",  # multiplication sign
-    "÷": "/",  # division sign
     "−": "-",  # minus sign
     "‐": "-",  # hyphen
     "‑": "-",  # non-breaking hyphen

@@ -53,7 +53,9 @@ def _paste_markers(image, page: int) -> None:
 
     dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
     ids = layout.marker_ids_for_page(page)
-    for marker_id, (x0, y0, x1, y1) in zip(ids, layout.marker_rects(), strict=True):
+    # The marker is square, so its height is implied by its width; _y1 is unpacked
+    # only to keep the rect shape readable at the call site.
+    for marker_id, (x0, y0, x1, _y1) in zip(ids, layout.marker_rects(), strict=True):
         bitmap = cv2.aruco.generateImageMarker(dictionary, marker_id, x1 - x0)
         image.paste(Image.fromarray(np.dstack([bitmap] * 3)), (x0, y0))
 

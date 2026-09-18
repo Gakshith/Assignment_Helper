@@ -6,7 +6,7 @@ the glyphs are drawn from a font at a known size on a known baseline, the true a
 ascent and descent of every cell are known exactly, so these tests assert on real
 numbers rather than on "it did not crash".
 
-These are slow by nature — a sheet is 2550x3300 and there are 90 cells on it — so the
+These are slow by nature — a sheet is 2550x3300 and there are CELLS_PER_PAGE cells on it — so the
 module builds each sheet once and shares it.
 """
 
@@ -298,7 +298,10 @@ def test_an_incomplete_sheet_is_marked_incomplete_and_lists_what_failed(
 ) -> None:
     """Under-coverage is reported, never papered over."""
     monkeypatch.setenv("AH_PROFILE_HOME", str(tmp_path))
-    skipped = set(CHARSET[40:])  # leave 50 of 90 written -> 56%, below the 60% floor
+    # Written count must land BELOW the 60% coverage floor, derived from the
+    # charset size rather than a number that silently stops meaning 56%.
+    written = int(len(CHARSET) * 0.5)
+    skipped = set(CHARSET[written:])
     image, _truth = synth.render_filled_page(0, skip=skipped)
     bgr = synth.photograph(image, scale=0.55)
 

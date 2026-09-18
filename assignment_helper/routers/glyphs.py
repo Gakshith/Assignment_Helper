@@ -286,7 +286,7 @@ async def extract_run(job_id: str) -> dict[str, object]:
             with _JOBS_LOCK:
                 _JOBS[job_id].update(state="failed", problem=exc.as_problem())
             return
-        except Exception as exc:  # noqa: BLE001 - re-raised to the client as a Problem
+        except Exception as exc:
             # Not a swallow: the failure is recorded and returned to the caller. An
             # unexpected exception on a worker thread would otherwise vanish entirely,
             # which is the silent failure I5 forbids.

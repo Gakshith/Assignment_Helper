@@ -70,6 +70,12 @@ ignore = [
   "E501",    # line-length is enforced by the formatter, not by a second opinion
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# This module's entire job is enumerating characters that look like other characters -
+# minus sign vs hyphen, prime vs apostrophe, multiplication sign vs x. RUF001 flagging
+# them is the rule firing on exactly the case it was written to catch elsewhere.
+"assignment_helper/glyphs/charset.py" = ["RUF001", "RUF002", "RUF003"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

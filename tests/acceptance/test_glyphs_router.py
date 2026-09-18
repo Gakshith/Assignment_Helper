@@ -12,6 +12,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from assignment_helper.glyphs.layout import CELLS_PER_PAGE
 from assignment_helper.app import ServerConfig, create_app
 from assignment_helper.security import SessionToken
 from support import synthetic_sheet as synth
@@ -49,7 +50,7 @@ def test_the_sheet_endpoint_writes_a_pdf(client, tmp_path) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["pages"] == 4
-    assert body["cellsPerPage"] == 90
+    assert body["cellsPerPage"] == CELLS_PER_PAGE
     # The unverified premise is surfaced to the caller, not buried in a docstring.
     assert body["colourDropVerifiedOnPaper"] is False
 
@@ -109,7 +110,7 @@ def test_a_full_extraction_through_the_router(client, tmp_path) -> None:
     assert state == "done", f"extraction did not finish: {body}"
     result = body["result"]
     assert result["status"] == "complete"
-    assert result["coverage"]["covered"] == 90
+    assert result["coverage"]["covered"] == CELLS_PER_PAGE
     assert result["timings"]["totalSeconds"] > 0
 
     assert client.get("/api/glyphs/profiles").json()["profiles"] == ["router-hand"]
