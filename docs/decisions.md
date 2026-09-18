@@ -64,3 +64,38 @@ and file watching became a stdlib mtime poll.
 `scikit-image` 0.25 builds from source and fails, but **0.26.0 ships cp314 wheels**. A
 real wheel exists, so the pin moved. Moving a pin to a version that genuinely exists is
 not the same act as keeping a dependency alive by pinning the interpreter down to it.
+
+## Licensed handwriting fonts have no Greek, and physics is made of Greek
+
+Measured across all three OFL hands shipped with this project:
+
+| Font | codepoints | Greek block | has α τ θ |
+|---|---|---|---|
+| Caveat | 753 | 1 | no |
+| Reenie Beanie | 320 | 4 | no |
+| Shadows Into Light | 349 | 0 | no |
+
+**This contradicts a claim in the plan.** §C.2 listed "the reference-hand authoring
+problem" among the things outline-first *deletes*, on the grounds that it "makes any
+permissively-licensed handwriting font a valid shipped reference hand, immediately,
+free." That is true for prose and **false for maths**, which is the milestone that
+needs it most. It only surfaced by rendering a real physics assignment, where the very
+first expression wanted `\tau`.
+
+The behaviour is correct — the block is badged `glyph.missing` naming the character,
+and the rest of the page renders (acceptance row 5) — but a physics page with the
+Greek silently absent from the *ink* and present only in a badge is not a page anyone
+would hand in.
+
+**Two consequences, both binding:**
+
+1. **The M2 tracing sheet must include Greek and the common maths operators.** It was
+   specified as "~90 cells" of what is implicitly the Latin alphabet. A student's own
+   hand fixes this completely — they write their own α and τ — but only if the sheet
+   asks for them. This is now a requirement on the glyph-extract strand, not a nicety.
+2. **The reference hand needs a documented coverage limit.** Until M2, the shipped
+   hand cannot render Greek at all, and the README should say so rather than letting a
+   user discover it on the assignment they are about to submit.
+
+Not chosen, and why: a Greek fallback font would mix two hands mid-expression, which
+looks worse than an honest badge and undermines the one thing the product sells.

@@ -1,4 +1,6 @@
-// OWNER: the figures strand. Replace the export; do not touch main.ts.
-import { stubFigures } from '../../app/stubs';
+// OWNER: the figures strand.
 import type { FiguresRenderer } from '../../app/contracts';
-export const figuresRenderer: FiguresRenderer = stubFigures;
+import { SketchFiguresRenderer } from './engine';
+
+export const figuresRenderer: FiguresRenderer = new SketchFiguresRenderer();
+export { SketchFiguresRenderer } from './engine';

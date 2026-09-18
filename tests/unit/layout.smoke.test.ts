@@ -83,14 +83,56 @@ describe('layout engine', () => {
     expect(g.pages[0]!.blocks.length).toBe(0);
   });
 
-  it('math is badged, never silently faked — KaTeX is M3', () => {
+  it('M3 — math is typeset into real positioned glyphs', () => {
     const doc: Document = {
       schema_version: 1,
       id: 'd',
       blocks: [{ kind: 'math', id: 'm1', seed: 7, latex: '\\frac{a}{b}', display: true }],
     };
-    const g = layoutDocument(doc, STYLE, metrics);
-    expect(g.pages[0]!.blocks[0]!.problem).toBeDefined();
+    const block = layoutDocument(doc, STYLE, metrics).pages[0]!.blocks[0]!;
+    expect(block.problem).toBeUndefined();
+
+    const glyphs = block.lines.flatMap((l) => l.glyphs);
+    const a = glyphs.find((g) => g.ch === 'a');
+    const b = glyphs.find((g) => g.ch === 'b');
+    expect(a).toBeDefined();
+    expect(b).toBeDefined();
+    // The numerator sits above the denominator on the page, which is the whole point.
+    expect(a!.baselineYMm).toBeLessThan(b!.baselineYMm);
+    // And a fraction rule was emitted between them.
+    // The fraction rule is a FIGURE, not a glyph — no font has an outline for it.
+    expect(block.figures.length).toBeGreaterThan(0);
+  });
+
+  it('acceptance row 6 — unparseable LaTeX is badged with the position, page still renders', () => {
+    const doc: Document = {
+      schema_version: 1,
+      id: 'd',
+      blocks: [
+        prose('b1', 'Before the bad maths.'),
+        { kind: 'math', id: 'm1', seed: 7, latex: '\\frac{a}{b', display: true },
+        prose('b2', 'After the bad maths.'),
+      ],
+    };
+    const blocks = layoutDocument(doc, STYLE, metrics).pages.flatMap((p) => p.blocks);
+    const math = blocks.find((b) => b.blockId === 'm1')!;
+    expect(math.problem?.code).toBe('math.parse-error');
+    // The source is shown verbatim rather than dropped.
+    expect(math.lines.flatMap((l) => l.glyphs).length).toBeGreaterThan(0);
+    // The rest of the page is unaffected — row 6 says so explicitly.
+    expect(blocks.find((b) => b.blockId === 'b1')!.problem).toBeUndefined();
+    expect(blocks.find((b) => b.blockId === 'b2')!.problem).toBeUndefined();
+  });
+
+  it('math layout is deterministic', () => {
+    const doc: Document = {
+      schema_version: 1,
+      id: 'd',
+      blocks: [{ kind: 'math', id: 'm1', seed: 7, latex: 'x^2 + \\sqrt{y} = z', display: true }],
+    };
+    expect(JSON.stringify(layoutDocument(doc, STYLE, metrics))).toBe(
+      JSON.stringify(layoutDocument(doc, STYLE, metrics)),
+    );
   });
 
   it('acceptance row 5 — a missing glyph substitutes or raises, never renders blank', () => {

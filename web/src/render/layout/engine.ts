@@ -47,6 +47,7 @@ import { textColumn, type Mm, type RectMm } from '../units';
 import { fnv1a64, splitmix64 } from '../rng';
 import type { Block, Document, Style } from '../../types/document';
 import { q } from './mathfns';
+import { typesetMath } from './math';
 import { amplitudesFor } from './params';
 import { placeLine, quantiseRect, unionRect } from './place';
 import { resolveStyle, styleHash, type ResolvedStyle } from './style';
@@ -331,18 +332,77 @@ class LayoutRun {
       }
 
       case 'math': {
-        // v1 DOES NOT LAY OUT MATH. KaTeX is M3. The LaTeX source is dumped as
-        // monospace-ish prose and badged, so it is visibly unfinished rather than
-        // silently wrong — a plausible-looking but incorrect formula on a submitted
-        // assignment is far worse than an obvious placeholder.
+        // M3: the KaTeX box-tree walk. A parse failure falls through to the verbatim
+        // dump below, which is acceptance row 6 — badged monospace source with the
+        // error position, and the rest of the page renders normally.
         const size = this.#rs.sizeMm;
+        const typeset = typesetMath(
+          block.latex,
+          block.display ?? true,
+          size,
+          this.#column.wMm,
+          seed,
+          this.#metrics,
+        );
+
+        if (typeset.kind === 'ok') {
+          const box = this.#reserve(typeset.heightMm + typeset.depthMm);
+          const baselineYMm = box.yMm + typeset.heightMm;
+          const xMm = this.#column.xMm + typeset.indentMm;
+          const line: LineGeometry = {
+            blockId: block.id,
+            lineIndex: 0,
+            baselineYMm,
+            xMm,
+            widthMm: typeset.widthMm,
+            glyphs: typeset.glyphs.map((g) => ({
+              ...g,
+              xMm: xMm + g.xMm,
+              baselineYMm: baselineYMm + g.baselineYMm,
+            })),
+          };
+          if (typeset.overflowMm !== null) problems.push(overflowProblem(typeset.overflowMm));
+          if (typeset.missing.length > 0) {
+            problems.push({
+              code: 'glyph.missing',
+              message:
+                `The hand has no glyph for ${typeset.missing.map((c) => JSON.stringify(c)).join(', ')}. ` +
+                'Draw them in the glyph studio, or the maths will be incomplete.',
+            });
+          }
+          frags.push({
+            pageIndex: this.#pageIndex,
+            lines: [line],
+            figures: typeset.rules.map((r) => ({
+              ...r,
+              pointsMm: r.pointsMm.map(
+                (pt) => [xMm + pt[0], baselineYMm + pt[1]] as readonly [Mm, Mm],
+              ),
+              seed: `${block.id}:${r.seed}`,
+            })),
+            box: { xMm, yMm: box.yMm, wMm: typeset.widthMm, hMm: box.hMm },
+          });
+          this.#emit({
+            blockId: block.id,
+            kind: 'math',
+            frags,
+            problems,
+            fitScale: typeset.fitScale,
+            fallbackBox: null,
+          });
+          return;
+        }
+
         const mono = monoAdvanceFor(block.latex, this.#metrics, size);
         const fit = this.#fitScaleFor(block.latex, size, mono, this.#column.wMm);
         const scaled = size * fit.fitScale;
         const monoScaled = mono * fit.fitScale;
+        // Acceptance row 6. The position matters: "it did not parse" sends the user
+        // hunting through the whole expression.
+        const at = typeset.position !== null ? ` at character ${typeset.position}` : '';
         problems.push({
-          code: 'math.not-implemented',
-          message: 'Math is not typeset yet (KaTeX lands in M3); the LaTeX source is shown verbatim.',
+          code: 'math.parse-error',
+          message: `This LaTeX could not be parsed${at}: ${typeset.message}`,
         });
         if (fit.overflow !== null) problems.push(overflowProblem(fit.overflow));
         this.#flowText({
@@ -483,6 +543,71 @@ class LayoutRun {
       return n;
     }
 
+    if (child.kind === 'math') {
+      // The same M3 path as a top-level math block. A boxed FINAL ANSWER is the single
+      // most likely place for maths in a problem set, so leaving this on the verbatim
+      // dump would mean the one equation a marker looks hardest at is the one shown as
+      // raw LaTeX.
+      const typeset = typesetMath(
+        child.latex,
+        child.display ?? true,
+        this.#rs.sizeMm,
+        args.innerWidth,
+        seed,
+        this.#metrics,
+      );
+      if (typeset.kind === 'ok') {
+        const h = typeset.heightMm + typeset.depthMm;
+        this.#ensureRoom(h);
+        const baselineYMm = this.#rowTopMm + typeset.heightMm;
+        const xMm = args.innerX;
+        const frag = this.#fragmentFor(args.frags);
+        frag.lines.push({
+          blockId: args.parentId,
+          lineIndex: args.lineIndexBase,
+          baselineYMm,
+          xMm,
+          widthMm: typeset.widthMm,
+          glyphs: typeset.glyphs.map((g) => ({
+            ...g,
+            xMm: xMm + g.xMm,
+            baselineYMm: baselineYMm + g.baselineYMm,
+          })),
+        });
+        for (const r of typeset.rules) {
+          frag.figures.push({
+            ...r,
+            pointsMm: r.pointsMm.map(
+              (pt) => [xMm + pt[0], baselineYMm + pt[1]] as readonly [Mm, Mm],
+            ),
+            seed: `${args.parentId}:${r.seed}`,
+          });
+        }
+        frag.box = unionRect(frag.box, {
+          xMm,
+          yMm: this.#rowTopMm,
+          wMm: typeset.widthMm,
+          hMm: h,
+        });
+        this.#rowTopMm = this.#snap(this.#rowTopMm + h);
+        if (typeset.overflowMm !== null) args.problems.push(overflowProblem(typeset.overflowMm));
+        if (typeset.missing.length > 0) {
+          args.problems.push({
+            code: 'glyph.missing',
+            message:
+              `The hand has no glyph for ${typeset.missing.map((c) => JSON.stringify(c)).join(', ')} ` +
+              'in this boxed answer.',
+          });
+        }
+        return 1;
+      }
+      const at = typeset.position !== null ? ` at character ${typeset.position}` : '';
+      args.problems.push({
+        code: 'math.parse-error',
+        message: `LaTeX in this boxed answer could not be parsed${at}: ${typeset.message}`,
+      });
+    }
+
     const isMath = child.kind === 'math';
     const text = isMath ? child.latex : child.text;
     const size =
@@ -490,12 +615,6 @@ class LayoutRun {
     const mono = isMath ? monoAdvanceFor(text, this.#metrics, size) : null;
     const fit = this.#fitScaleFor(text, size, mono, args.innerWidth);
     if (fit.overflow !== null) args.problems.push(overflowProblem(fit.overflow));
-    if (isMath) {
-      args.problems.push({
-        code: 'math.not-implemented',
-        message: 'Math inside this boxed answer is not typeset yet; the LaTeX source is shown verbatim.',
-      });
-    }
 
     return this.#flowText({
       blockId: args.parentId,
