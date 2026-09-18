@@ -26,10 +26,17 @@ dependencies = [
 # The CV stack. Installed only for glyph extraction (M2).
 # I17: these may NEVER be imported at module scope. Lazy-import inside
 # function bodies under assignment_helper/glyphs/** only.
+# Pins verified installable on cpython-3.14 arm64, 2026-09-17.
+# scikit-image 0.26.0 is the FIRST release shipping cp314 wheels - 0.25.x builds from
+# source via meson and fails. The pin moved forward because a real wheel exists; that
+# is different from the watchfiles case above, where no wheel exists at any version
+# and the fallback doctrine said to drop the dependency instead.
+# opencv-python 5.0 is a major jump from the planned 4.10; cv2.aruco.ArucoDetector is
+# unchanged and verified to construct.
 glyphs = [
-  "opencv-python==4.10.0.84",
-  "scikit-image==0.25.0",
-  "numpy==2.2.1",
+  "opencv-python==5.0.0.93",
+  "scikit-image==0.26.0",
+  "numpy==2.5.3",
 ]
 dev = [
   "pytest",
