@@ -1,12 +1,20 @@
 .DS_Store
 .env
 .env.local
+node_modules
 node_modules/
 __pycache__/
 *.pyc
 .venv/
 dist/
 build/
+.claude/worktrees/
+.pytest_cache/
+*.tsbuildinfo
+
+# The built web bundle. Produced by the release workflow, never committed.
+assignment_helper/static/*
+!assignment_helper/static/.gitkeep
 
 # never commit personal handwriting data or built fonts
 samples/
@@ -14,3 +22,12 @@ fonts/personal/
 *.otf
 *.ttf
 out/
+
+# EXCEPTION: OFL-licensed third-party handwriting fonts, which are not the user's
+# handwriting and must ship. Outline-first (plan §C.2) makes a permissively-licensed
+# font the reference hand, and the M0 spike is not reproducible without its fonts.
+# Their OFL.txt files sit beside them. Personal handwriting stays excluded above.
+!web/public/fonts/reference/*.ttf
+!web/public/fonts/reference/*.otf
+!spikes/m0/fonts/*.ttf
+!spikes/m0/fonts/*.otf

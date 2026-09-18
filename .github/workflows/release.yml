@@ -1,0 +1,74 @@
+name: release
+
+# Plan §9. A release is a TAG, and the wheel it produces must contain the built web
+# bundle — `assignment_helper/static/` is gitignored, so a wheel built from a clean
+# checkout without `npm run build` ships a server that serves a 500 instead of an app.
+# That is the one release failure invisible from a dev checkout, so the job asserts it.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (must already exist)'
+        required: true
+
+jobs:
+  wheel:
+    # arm64. The stack is pinned against Apple Silicon wheels and a source-built
+    # OpenCV is a hard install failure by design (acceptance row 21), so an x86
+    # runner would build a configuration we refuse to ship.
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags and full history: the version string comes from `git describe`, and a
+          # shallow clone reports a dev build for what is actually a release.
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      - run: uv venv --python 3.14 .venv
+      - run: uv pip install --python .venv/bin/python -e '.[dev,glyphs]'
+      - run: npm ci
+
+      - name: integration harness must be green before anything ships
+        run: ./scripts/integrate.sh
+
+      - name: build the bundle into the package
+        run: npm run build
+
+      - name: build the wheel
+        run: uv build --out-dir dist
+
+      - name: the wheel actually contains the bundle
+        run: |
+          WHEEL=$(ls dist/*.whl)
+          echo "checking $WHEEL"
+          unzip -l "$WHEEL" | grep -q 'assignment_helper/static/index.html' || {
+            echo "::error::no static/index.html in the wheel - it would serve a 500, not an app"
+            exit 1
+          }
+          unzip -l "$WHEEL" | grep -q 'assignment_helper/static/fonts/reference/' || {
+            echo "::error::no reference hand in the wheel - first launch could not render"
+            exit 1
+          }
+
+      - name: clean-install test
+        run: ./tests/release/clean_install.sh
+
+      - name: the release build must NOT report itself as a dev build
+        run: |
+          VERSION=$(.venv/bin/python -c "import sys; sys.path.insert(0,'.'); from assignment_helper.version import derive_version; v = derive_version(); print(v.version); sys.exit(1 if v.dev_build else 0)")
+          echo "version: $VERSION"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.whl
+          fail_on_unmatched_files: true
