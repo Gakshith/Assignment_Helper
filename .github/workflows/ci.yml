@@ -11,11 +11,19 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history AND tags. The frozen-file check diffs against the `seam-freeze`
+          # tag; under the default shallow clone that tag is absent, git diff errors,
+          # and a non-zero exit reads as "this file changed" — so every frozen file was
+          # reported as edited on a checkout that had edited nothing.
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
       - run: uv venv --python 3.14 .venv
-      - run: uv pip install --python .venv/bin/python -e '.[dev]'
+      # The glyphs extra too: M2's acceptance tests import cv2, and without it CI fails
+      # with ModuleNotFoundError on tests that pass locally.
+      - run: uv pip install --python .venv/bin/python -e '.[dev,glyphs]'
       - run: npm ci
       - name: integration harness
         run: ./scripts/integrate.sh

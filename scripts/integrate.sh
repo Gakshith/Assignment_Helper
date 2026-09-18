@@ -54,6 +54,16 @@ FROZEN=(
 # An annotated tag, not a hardcoded sha, so re-baselining is a deliberate, recorded act.
 # Move it ONLY with a commit that says what changed in a frozen file and why.
 FREEZE_TAG=${FREEZE_TAG:-seam-freeze}
+# A missing baseline must not masquerade as "everything changed". That is exactly what
+# happened in CI: a shallow clone had no tags, git diff errored, the non-zero exit was
+# read as a diff, and all eleven frozen files were reported as edited.
+if ! git rev-parse --verify --quiet "$FREEZE_TAG^{commit}" >/dev/null; then
+  echo "  FAILED: the baseline '$FREEZE_TAG' does not exist in this checkout."
+  echo "  This is NOT a report that the frozen files changed - it is a missing tag."
+  echo "  In CI, use actions/checkout with fetch-depth: 0 so tags are fetched."
+  exit 2
+fi
+
 for f in "${FROZEN[@]}"; do
   if ! git diff --quiet "$FREEZE_TAG" -- "$f"; then
     echo "  CHANGED: $f — a strand edited a frozen file. This is a contract bug, not a merge."
