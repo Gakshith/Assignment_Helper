@@ -52,3 +52,44 @@ body {
 }
 .page-layer { position: absolute; inset: 0; display: block; }
 .page-layer--paper { position: relative; }
+
+/* ---------------------------------------------------------------- lasso */
+.lasso-box {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Dark scrim in BOTH themes: the toolbar sits over bright paper in either, so
+   theming it with the chrome would make it illegible exactly where it is used. */
+.sel-toolbar {
+  position: fixed;
+  z-index: 50;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgb(18 22 20 / 92%);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 35%);
+  animation: sel-in 110ms ease-out;
+}
+.sel-toolbar[hidden] { display: none !important; }
+@keyframes sel-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .sel-toolbar { animation: none; } }
+
+.sel-pill {
+  appearance: none;
+  border: 0;
+  border-radius: 5px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  color: #F4F1E9;
+  background: transparent;
+  cursor: pointer;
+}
+.sel-pill:hover:not(:disabled) { background: rgb(255 255 255 / 12%); }
+.sel-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sel-pill:disabled { opacity: 0.4; cursor: not-allowed; }
