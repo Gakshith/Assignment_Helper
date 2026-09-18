@@ -43,11 +43,24 @@ def extracted(clean_page):
 # ------------------------------------------------------- the round trip
 
 
-def test_the_round_trip_recovers_every_character(extracted) -> None:
+def test_the_round_trip_recovers_every_character_the_fixture_can_draw(extracted) -> None:
+    """Every character the FIXTURE FONT can draw comes back.
+
+    Not every character in the charset: Caveat has one codepoint in the Greek block and
+    none of the maths operators, so 33 of the 132 cells are left deliberately blank.
+    The earlier version of this test wrote a tofu box into those cells, recovered the
+    tofu, and asserted 132/132 — passing on a profile where a quarter of the glyphs
+    were solid rectangles. Tofu in, tofu out.
+    """
     outlines, failures, _truth = extracted
     recovered = {o.ch for o in outlines}
-    missing = sorted(set(CHARSET) - recovered)
+    drawable = synth.font_covers(synth.REFERENCE_FONT)
+    expected = {c for c in CHARSET if c in drawable}
+    missing = sorted(expected - recovered)
     assert not missing, f"lost {len(missing)} characters: {missing}; failures={failures}"
+
+    # And nothing was invented for the cells that were left blank.
+    assert not (recovered - expected)
 
 
 def test_recovered_ascent_and_descent_match_the_font(extracted) -> None:
@@ -239,8 +252,15 @@ def test_a_full_run_writes_one_atomic_loadable_profile(tmp_path, monkeypatch) ->
     on_disk = json.loads(written.read_text(encoding="utf-8"))
     assert on_disk["schemaVersion"] == profile_mod.SCHEMA_VERSION
     assert on_disk["unitsPerEm"] == 1000
-    assert on_disk["status"] == "complete"
-    assert on_disk["coverage"]["covered"] == len(CHARSET)
+    # Incomplete, and that is the CORRECT answer: the fixture font cannot draw the
+    # Greek and the operators, so those cells are blank. This exercises the
+    # incomplete-profile path, which the previous fixture never reached because it
+    # filled every cell with a tofu box.
+    assert on_disk["status"] == "incomplete"
+    drawable = synth.font_covers(synth.REFERENCE_FONT)
+    assert set(on_disk["coverage"]["missing"]) == {c for c in CHARSET if c not in drawable}
+    assert on_disk["coverage"]["ratio"] > 0.6, "still well above the viability floor"
+    assert on_disk["coverage"]["covered"] == len({c for c in CHARSET if c in drawable})
     assert sorted(on_disk["extraction"]["pagesRead"]) == [0, 1]
     # The unverified premise is recorded on every profile, not just in a docstring.
     assert on_disk["extraction"]["colourDropVerifiedOnPaper"] is False

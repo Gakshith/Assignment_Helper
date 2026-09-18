@@ -141,10 +141,15 @@ async def list_profiles() -> dict[str, object]:
 
 @router.get("/profile/{profile_id}")
 async def get_profile(profile_id: str) -> dict[str, object]:
-    """Coverage and failed cells for one profile.
+    """Coverage and failed cells for ONE profile — the summary a listing needs.
 
-    Deliberately does NOT return the outlines. They are the user's handwriting (I9)
-    and they are large; the browser provider reads the file from disk itself.
+    Does not return the outlines: they are large, and a picker only needs to know what
+    exists and how complete it is. The renderer uses `/hand/{profile_id}` below.
+
+    NOTE, because the original comment here was wrong and the mistake cost a debugging
+    session: it said "the browser provider reads the file from disk itself." A browser
+    cannot read a file from disk. The outlines have to be served, and until `/hand` was
+    added, M2 produced a profile that nothing could render.
     """
     profile_mod = _glyphs("profile")
     errors = _glyphs("errors")
@@ -162,6 +167,24 @@ async def get_profile(profile_id: str) -> dict[str, object]:
         "extraction": profile["extraction"],
         "failedCells": profile["failedCells"],
     }
+
+
+@router.get("/hand/{profile_id}")
+async def get_hand(profile_id: str) -> dict[str, object]:
+    """The FULL profile — outlines included — for the browser renderer.
+
+    This is the user's handwriting (I9). It is served over loopback only, behind the
+    session token, to the browser running on the same machine. That is not the file
+    "leaving the machine"; it is the renderer being on the other side of an HTTP call
+    rather than an import. Nothing here forwards it anywhere else, and the chat payload
+    has no field it could travel through by construction.
+    """
+    profile_mod = _glyphs("profile")
+    errors = _glyphs("errors")
+    try:
+        return profile_mod.load_profile(profile_id)
+    except errors.GlyphExtractionError as exc:
+        raise _http_for(exc) from exc
 
 
 @router.post("/extract/begin")

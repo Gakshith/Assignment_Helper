@@ -109,8 +109,10 @@ def test_a_full_extraction_through_the_router(client, tmp_path) -> None:
 
     assert state == "done", f"extraction did not finish: {body}"
     result = body["result"]
-    assert result["status"] == "complete"
-    assert result["coverage"]["covered"] == CELLS_PER_PAGE
+    # See test_glyph_extraction: the fixture font cannot draw Greek or the operators,
+    # so a full run is legitimately incomplete and says so.
+    assert result["status"] == "incomplete"
+    assert 0.6 < result["coverage"]["ratio"] < 1.0
     assert result["timings"]["totalSeconds"] > 0
 
     assert client.get("/api/glyphs/profiles").json()["profiles"] == ["router-hand"]

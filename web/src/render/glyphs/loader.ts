@@ -13,6 +13,40 @@ import type { GlyphProfileProvider } from '../../app/contracts';
 import { parseHand, type ParsedHand } from './font';
 import { buildHand, type Hand } from './provider';
 import { REFERENCE_HAND, isReferenceProfile } from './reference';
+import { buildTracedHand, type TracedProfile } from './traced';
+
+/**
+ * Fetch a traced profile from the LOCAL server.
+ *
+ * The session token comes from sessionStorage, where the frozen main.ts put it after
+ * stripping it from the launch URL (I16). It is read here rather than threaded through
+ * the provider interface because `GlyphProfileProvider.load(profileId)` takes an id and
+ * nothing else, and widening a frozen contract for a value that has one well-known home
+ * is the wrong trade.
+ */
+async function loadTraced(profileId: string): Promise<Hand> {
+  const headers: Record<string, string> = {};
+  try {
+    const token = sessionStorage.getItem('ah.token');
+    if (token) headers['x-ah-token'] = token;
+  } catch {
+    // No storage: the request will 403 and say so, which is the right failure.
+  }
+
+  // /hand, not /profile: the latter is the summary a picker needs, and it carries no
+  // outlines at all. Loading a hand from it yields a provider with no glyphs.
+  const url = `/api/glyphs/hand/${encodeURIComponent(profileId)}`;
+  const res = await fetch(url, { headers });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(
+      `could not load the hand "${profileId}" from ${url}: HTTP ${res.status}. ` +
+        `${body.slice(0, 200)}`,
+    );
+  }
+  const profile = (await res.json()) as TracedProfile;
+  return buildTracedHand(profile);
+}
 
 /** Injected in tests. The default reads the bundled font over HTTP. */
 export type FontFetcher = (path: string) => Promise<ArrayBuffer>;
@@ -81,14 +115,17 @@ export function createGlyphProfileProvider(
     name: 'opentype-glyphs',
 
     async load(profileId: string): Promise<Hand> {
+      // A traced profile — the user's own hand, from the M2 extraction pipeline.
+      // Deliberately NOT falling back to the reference hand when it is missing: a
+      // document that names a personal hand and silently gets Caveat would be
+      // submitted in the wrong handwriting, and the user would not be told.
       if (!isReferenceProfile(profileId)) {
-        // Not a fallback. A document that names a personal hand and silently gets the
-        // reference one would be submitted in the wrong handwriting.
-        throw new Error(
-          `no glyph profile named "${profileId}" is available. Only the bundled ` +
-            `reference hand (${REFERENCE_HAND.family}) exists in this build; extracted ` +
-            `personal profiles arrive with the glyph-extraction strand.`,
-        );
+        const existingTraced = inFlight.get(profileId);
+        if (existingTraced !== undefined) return existingTraced;
+        const pendingTraced = loadTraced(profileId);
+        inFlight.set(profileId, pendingTraced);
+        pendingTraced.catch(() => inFlight.delete(profileId));
+        return pendingTraced;
       }
 
       const existing = inFlight.get(profileId);

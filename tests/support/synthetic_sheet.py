@@ -50,6 +50,55 @@ def _font_for_cell(cell: layout.CellBox, font_path: Path):
     return ImageFont.truetype(str(font_path), size=int(round(cell.em_px)))
 
 
+def font_covers(font_path: Path) -> set[str]:
+    """Which characters this font can actually DRAW.
+
+    Without this the fixture writes a tofu box for every character the font lacks, the
+    extractor faithfully recovers the tofu, and the profile reports 132/132 covered
+    while roughly a quarter of the glyphs are solid rectangles. A round-trip test then
+    passes on garbage, because tofu in is tofu out.
+
+    Caveat has one codepoint in the Greek block and none of the maths operators, so
+    this is not a corner case: it is most of what the M2 charset added.
+    """
+    import struct
+
+    data = font_path.read_bytes()
+    count = struct.unpack(">H", data[4:6])[0]
+    tables = {}
+    for i in range(count):
+        off = 12 + 16 * i
+        tag = data[off : off + 4].decode("latin1")
+        start, length = struct.unpack(">II", data[off + 8 : off + 16])
+        tables[tag] = (start, length)
+
+    cmap_start, _ = tables["cmap"]
+    subtables = struct.unpack(">H", data[cmap_start + 2 : cmap_start + 4])[0]
+    best = None
+    for i in range(subtables):
+        rec = cmap_start + 4 + 8 * i
+        pid, eid, offset = struct.unpack(">HHI", data[rec : rec + 8])
+        if (pid, eid) in ((3, 1), (3, 10), (0, 3), (0, 4)):
+            best = cmap_start + offset
+    if best is None:
+        return set()
+
+    fmt = struct.unpack(">H", data[best : best + 2])[0]
+    if fmt != 4:
+        return set()
+    seg_x2 = struct.unpack(">H", data[best + 6 : best + 8])[0]
+    segs = seg_x2 // 2
+    ends = struct.unpack(f">{segs}H", data[best + 14 : best + 14 + seg_x2])
+    starts = struct.unpack(f">{segs}H", data[best + 16 + seg_x2 : best + 16 + 2 * seg_x2])
+    covered: set[str] = set()
+    for lo, hi in zip(starts, ends, strict=True):
+        if hi == 0xFFFF:
+            continue
+        for cp in range(lo, hi + 1):
+            covered.add(chr(cp))
+    return covered
+
+
 def render_filled_page(
     page: int,
     charset: list[str] | None = None,
@@ -69,6 +118,12 @@ def render_filled_page(
     from assignment_helper.rng import rand_range
 
     chars = charset if charset is not None else CHARSET
+    # Leave a cell BLANK when the fixture font cannot draw it, rather than writing a
+    # tofu box that extraction will faithfully recover as a solid rectangle. A blank
+    # cell is honestly incomplete; a tofu cell is a lie that passes tests.
+    drawable = font_covers(font_path or REFERENCE_FONT)
+    unsupported = {c for c in chars if c not in drawable}
+    skip = (skip or set()) | unsupported
     font_path = font_path or REFERENCE_FONT
     skip = skip or set()
 
