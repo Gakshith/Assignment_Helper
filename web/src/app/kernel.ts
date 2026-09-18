@@ -40,7 +40,7 @@ import type {
   StylePanel,
 } from './contracts';
 import type { DocumentGeometry, GlyphMetricsProvider, GlyphOutlineProvider } from '../render/geometry';
-import { PAGE_SIZES, mmToPx } from '../render/units';
+import { PAGE_SIZES, mmToPx, rectUnion, type RectMm } from '../render/units';
 
 // ---------------------------------------------------------------- problem sink
 
@@ -318,6 +318,18 @@ export class Kernel {
   readonly actions: EditorActions;
 
   #geometry: DocumentGeometry | null = null;
+  /**
+   * The document version and style the cached geometry was computed FOR.
+   *
+   * Tracked here rather than read off `geometry.docVersion`, which the layout engine
+   * cannot fill in: `layout(doc, style, metrics)` is handed a Document, and a version
+   * belongs to a Snapshot, not to a Document. The engine emitted a placeholder -1, so
+   * the kernel's cache check was always true and EVERY repaint re-laid out the whole
+   * document — including a single-block edit. The symptom was G1 and G3 measuring the
+   * same, which a single-block repaint never legitimately does.
+   */
+  #geometryVersion: number | null = null;
+  #geometryStyleHash: string | null = null;
   #metrics: GlyphMetricsProvider | null = null;
   #outlines: GlyphOutlineProvider | null = null;
 
@@ -342,6 +354,7 @@ export class Kernel {
 
   /** Every seam connected, in one place, in one order. */
   async start(): Promise<void> {
+    this.#bindShortcuts();
     this.pages.mount(this.hosts.pages);
     this.subsystems.style.mount(this.hosts.rightPanel, this.actions);
     this.subsystems.chat.mount(this.hosts.chatDock, this.actions);
@@ -385,6 +398,26 @@ export class Kernel {
     this.scheduler.invalidateAll();
   }
 
+  /**
+   * Undo/redo, bound once at the document level rather than on any one panel.
+   *
+   * The kernel owns it because undo is not a property of the surface you happened to
+   * be looking at — a user who just accepted an AI edit expects Cmd+Z to take it back
+   * whether the focus is on the page, the style panel or the chat box.
+   */
+  #bindShortcuts(): void {
+    document.addEventListener('keydown', (ev) => {
+      const accel = ev.metaKey || ev.ctrlKey;
+      if (!accel || ev.key.toLowerCase() !== 'z') return;
+      // Never steal the browser's own undo from a field the user is typing in.
+      const target = ev.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+      ev.preventDefault();
+      void (ev.shiftKey ? this.actions.redo() : this.actions.undo());
+    });
+  }
+
   async #onRemoteDelta(delta: Delta): Promise<void> {
     // The kernel does not apply ops itself — the server is authoritative (I4), so a
     // remote delta is followed by re-reading the server's version of the truth.
@@ -399,8 +432,15 @@ export class Kernel {
     const style = this.store.style;
     if (!doc || !style || !this.#metrics || !this.#outlines) return;
 
-    if (all || this.#geometry === null || this.#geometry.docVersion !== this.store.version) {
+    const styleKey = JSON.stringify(style);
+    const stale =
+      this.#geometry === null ||
+      this.#geometryVersion !== this.store.version ||
+      this.#geometryStyleHash !== styleKey;
+    if (stale) {
       this.#geometry = this.subsystems.layout.layout(doc, style, this.#metrics);
+      this.#geometryVersion = this.store.version;
+      this.#geometryStyleHash = styleKey;
       // The lasso indexes what it is given. Without this call its index is empty and
       // every gesture selects nothing, silently — see the note on setGeometry.
       this.subsystems.lasso.setGeometry(this.#geometry);
@@ -409,7 +449,10 @@ export class Kernel {
     const sizeName = style.paper?.page_size ?? 'letter';
     const dpi = style.preview_dpi ?? 150;
 
-    for (const page of this.#geometry.pages) {
+    const geometry = this.#geometry;
+    if (!geometry) return;
+
+    for (const page of geometry.pages) {
       const touched =
         all ||
         dirtyPages.has(page.pageIndex) ||
@@ -418,7 +461,28 @@ export class Kernel {
 
       const layers = this.pages.ensure(page.pageIndex, sizeName, dpi);
       if (all) this.subsystems.paper.paintPaper(layers, style);
-      this.subsystems.paint.paintInk(layers, page, style, this.#outlines);
+
+      /**
+       * Invariant I7: repaint cost is O(dirty area), never O(strokes).
+       *
+       * This passed `undefined` for the dirty rect, so every single-block edit repainted
+       * the WHOLE page's ink. It measured fine — G1 23.7 ms against a 40 ms budget — on
+       * a one-page document, and the tell was that G1 and G3 came out equal: a
+       * single-block repaint cannot legitimately cost the same as a full page. On a
+       * dense 20-page document it would blow the budget on every keystroke, and the
+       * gate would have caught it far too late to be cheap to fix.
+       *
+       * The union of the dirty blocks' boxes is the rectangle; a page-scope or
+       * whole-document invalidation still repaints everything, as it should.
+       */
+      let dirtyMm: RectMm | undefined;
+      if (!all && !dirtyPages.has(page.pageIndex)) {
+        for (const b of page.blocks) {
+          if (!dirtyBlocks.has(b.blockId)) continue;
+          dirtyMm = dirtyMm ? rectUnion(dirtyMm, b.boxMm) : b.boxMm;
+        }
+      }
+      this.subsystems.paint.paintInk(layers, page, style, this.#outlines, dirtyMm);
       this.subsystems.figures.paintFigures(layers, page, style);
 
       for (const b of page.blocks) {

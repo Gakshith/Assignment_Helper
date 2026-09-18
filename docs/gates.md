@@ -14,9 +14,9 @@ Last updated 2026-09-17.
 
 | # | Gate | Budget | Status |
 |---|---|---|---|
-| G1 | Single-block re-render, no reflow | ≤ 40 ms p95 | **NOT MEASURED** — needs the paint engine |
-| G2 | Single-block edit that reflows | ≤ 120 ms p95 | **NOT MEASURED** — needs the paint engine |
-| G3 | Full-page first render, warm paper | ≤ 400 ms p95 | **NOT MEASURED** — needs paint + paper |
+| G1 | Single-block re-render, no reflow | ≤ 40 ms p95 | ✅ **PASS — 18.3 ms p95** over 60 samples on a 13-page, 445-block document |
+| G2 | Single-block edit that reflows | ≤ 120 ms p95 | **NOT MEASURED.** Needs an edit that reflows; `tests/perf/gates.mjs` says so rather than reporting G1's number twice |
+| G3 | Full-page first render, warm paper | ≤ 400 ms p95 | ✅ **PASS — 38.4 ms p95**, same document, 30 samples |
 | G3c | — | — | **DELETED.** It was G4 cold (1200) + G3 warm (400) = 1600 exactly: a checksum of two other gates, not an independent one |
 | G4 | Paper layer, cold / warm | ≤ 1200 ms / ≤ 5 ms | **NOT MEASURED** — paper engine in flight |
 | G5 | Math parse + build + walk | ≤ 3 ms / ≤ 12 ms p99 | **PARTIAL.** The 25-test walk suite runs in ~13 ms total including parse, build and walk for 12 expressions. Not a p99 over 200 samples, so not a pass |
@@ -57,10 +57,38 @@ Last updated 2026-09-17.
 | I16 | No route reachable without the session token | ✅ All four defences tested: no token 403, bad token 403, rebound `Host` 403, cross-site POST 403. Token absent from `repr` and from every response body. Verified live that it is stripped from the URL into `sessionStorage` |
 | I17 | CV stack never imported at module scope | ✅ **Enforced** — import-linter, 69 files, 172 dependencies, 2 contracts kept |
 
+## How G1 was nearly reported as passing while being broken
+
+Worth recording, because the failure was invisible in every other signal.
+
+The first harness bracketed an invalidation with two awaited animation frames and
+reported wall time. At 60 Hz that is ~33 ms of vsync, so it measured the display
+refresh: it would have printed ~35 ms against a 40 ms budget and called it a pass while
+saying nothing about the code. Fixed by reading the scheduler's own `lastFlushMs` —
+which exists precisely because invariant I1 bans `performance.now()` under `render/**`,
+so the instrumentation had to live in `kernel.ts` anyway.
+
+With honest timing, **G1 and G3 came out equal**. A single-block repaint cannot
+legitimately cost the same as a full page, and that equality was the only symptom of
+two real defects:
+
+1. The kernel passed **no dirty rect** to `paintInk`, so every edit repainted the whole
+   page's ink. Invariant I7 says cost is O(dirty area); the paint engine supported it
+   and the kernel never asked.
+2. The layout engine emitted `docVersion: -1` — it cannot know a version, because
+   `layout(doc, style, metrics)` receives a Document and a version belongs to a
+   Snapshot. So the kernel's cache check was **always** true and **every repaint
+   re-laid out the entire document**. On this 13-page document that is 445 blocks
+   re-laid out per keystroke.
+
+Both passed every unit test, and on a one-page document both still measured inside
+budget. They separate only on a document big enough to matter — which is exactly the
+document the gate was written for.
+
 ## What this table is for
 
-Honest count as of 2026-09-18: **3 gates passing with measured numbers** (G9b, G10, G15),
-**3 partial** (G5, G6, G8), **11 unmeasured**.
+Honest count as of 2026-09-18: **5 gates passing with measured numbers** (G1, G3, G9b,
+G10, G15), **3 partial** (G5, G6, G8), **9 unmeasured**.
 
 What the remaining unmeasured ones need is no longer a missing subsystem — the pipeline
 is closed end to end — it is a **harness**: G1/G2/G3 want p95 over 200 instrumented
