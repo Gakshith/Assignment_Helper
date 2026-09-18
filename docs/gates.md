@@ -23,9 +23,9 @@ Last updated 2026-09-17.
 | G6 | Export rasterize, 1 page @200 DPI | ≤ 900 ms | **PARTIAL.** Whole browser→PDF round trip is 1.3 s, of which rasterize is a fraction. Not isolated, so not a pass |
 | G7 | Raw RGBA POST + decode | ≤ 40 ms | **NOT MEASURED** |
 | G8 | Python artifact pipeline, 1 page | ≤ 2.5 s | **PARTIAL.** JPEG encode 41 ms + PDF assembly 10 ms on a synthetic page. Far inside budget, but not a real rendered page |
-| G9 | Full export, 20 pages | ≤ 90 s | **NOT MEASURED** |
+| G9 | Full export, 20 pages | ≤ 90 s | **PARTIAL — 12.3 s for 13 pages** (0.95 s/page), browser to PDF on disk. 20 pages would be ~19 s on that rate, but a rate is not a measurement and the 20-page run has not been done |
 | G9b | Full export, 1 page | ≤ 6 s | ✅ **PASS — 1.3 s**, browser click to PDF on disk, measured in a real browser against the real server |
-| G10 | PDF size @200 DPI | ≤ 700 KB/page, **warning not gate** | ✅ **PASS — 356 KB/page** on a really rendered page with procedural grain. (An earlier synthetic figure of 1481 KB was 120k random pixels — maximum-entropy noise, not ink — and was never a G10 result) |
+| G10 | PDF size @200 DPI | ≤ 700 KB/page, **warning not gate** | ✅ **PASS — 356 KB/page** single page, **421 KB/page** across a 13-page export on a really rendered page with procedural grain. (An earlier synthetic figure of 1481 KB was 120k random pixels — maximum-entropy noise, not ink — and was never a G10 result) |
 | G11 | Peak memory, 20-page export | ≤ 1.2 GB / ≤ 2.0 GB | **NOT MEASURED** |
 | G12 | Glyph extraction, one sheet | ≤ 60 s, rectify+segment ≤ 8 s | **NOT MEASURED** — M2 in flight |
 | G13a | Warm start → first page | ≤ 2.0 s | **NOT MEASURED** |
@@ -88,7 +88,7 @@ document the gate was written for.
 ## What this table is for
 
 Honest count as of 2026-09-18: **5 gates passing with measured numbers** (G1, G3, G9b,
-G10, G15), **3 partial** (G5, G6, G8), **9 unmeasured**.
+G10, G15), **4 partial** (G5, G6, G8, G9), **8 unmeasured**.
 
 What the remaining unmeasured ones need is no longer a missing subsystem — the pipeline
 is closed end to end — it is a **harness**: G1/G2/G3 want p95 over 200 instrumented
