@@ -61,7 +61,13 @@ def git_describe(root: Path | None = None, *, runner=subprocess.run) -> str | No
     root = root or _repo_root()
     try:
         proc = runner(
-            ["git", "describe", "--tags", "--dirty", "--always"],
+            # --match 'v*' restricts this to RELEASE tags. Without it, any other tag
+            # on the commit wins: `known-good-20260918` and `seam-freeze` are both
+            # tags this project legitimately uses, and either would make git describe
+            # return something no version parser can read. The failure was benign —
+            # version.py refuses to guess and reports a dev build with the reason — but
+            # the reason it printed was noise rather than information.
+            ["git", "describe", "--tags", "--match", "v*", "--dirty", "--always"],
             cwd=str(root),
             capture_output=True,
             text=True,
