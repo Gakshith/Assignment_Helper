@@ -227,3 +227,34 @@ describe('inline maths flows with the sentence', () => {
     expect(h1).toBeGreaterThan(p1);
   });
 });
+
+describe('a boxed answer is one line, not a two-row frame', () => {
+  it('inline maths and its unit share a baseline inside the box', () => {
+    // `> **Answer:** $v = 4.39$ m/s` parses to a boxed block whose children are inline
+    // maths and a unit. Without continuation the unit drops to its own line and the
+    // frame grows to two rows around two words — on the most looked-at element of the
+    // page.
+    const doc: Document = {
+      schema_version: 1,
+      id: 'd',
+      blocks: [
+        {
+          kind: 'boxed',
+          id: 'bx',
+          seed: 4,
+          children: [
+            { kind: 'math', id: 'am', seed: 5, latex: 'v = 4.39', display: false },
+            { kind: 'prose', id: 'au', seed: 6, text: 'm/s' },
+          ],
+        },
+      ],
+    };
+    const box = layoutDocument(doc, STYLE, metrics).pages[0]!.blocks.find(
+      (b) => b.kind === 'boxed',
+    )!;
+    const baselines = [...new Set(box.lines.map((l) => Math.round(l.baselineYMm * 100)))];
+    expect(baselines).toHaveLength(1);
+    // And the frame is one row tall, not two.
+    expect(box.boxMm.hMm).toBeLessThan(18);
+  });
+});

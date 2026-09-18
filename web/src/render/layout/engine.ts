@@ -600,6 +600,9 @@ class LayoutRun {
         }
 
         this.#rowTopMm = this.#snap(this.#rowTopMm + BOX_PADDING_MM);
+        // The cursor must not leak past the frame: a sentence after a boxed answer
+        // resuming on the answer's baseline would draw it through the box.
+        this.#inline = null;
 
         for (const f of frags) {
           if (f.box === null) continue;
@@ -686,10 +689,20 @@ class LayoutRun {
         this.#metrics,
       );
       if (typeset.kind === 'ok') {
+        // A boxed answer is almost always `$v = 4.39$ m/s` — one inline expression and
+        // a unit. Without continuation the unit drops to its own line and the frame
+        // grows to two rows around two words, which is the most visible element on the
+        // page getting the worst of it.
+        const boxRightMm = args.innerX + args.innerWidth;
+        const cursor = child.display === false ? this.#inline : null;
+        const inlineFits = cursor !== null && cursor.xMm + typeset.widthMm <= boxRightMm;
+
         const h = typeset.heightMm + typeset.depthMm;
-        this.#ensureRoom(h);
-        const baselineYMm = this.#rowTopMm + typeset.heightMm;
-        const xMm = args.innerX;
+        if (!inlineFits) this.#ensureRoom(h);
+        const baselineYMm = inlineFits && cursor
+          ? cursor.baselineYMm
+          : this.#rowTopMm + typeset.heightMm;
+        const xMm = inlineFits && cursor ? cursor.xMm : args.innerX;
         const frag = this.#fragmentFor(args.frags);
         frag.lines.push({
           blockId: args.parentId,
@@ -714,11 +727,13 @@ class LayoutRun {
         }
         frag.box = unionRect(frag.box, {
           xMm,
-          yMm: this.#rowTopMm,
+          yMm: baselineYMm - typeset.heightMm,
           wMm: typeset.widthMm,
           hMm: h,
         });
-        this.#rowTopMm = this.#snap(this.#rowTopMm + h);
+        const spaceMm = this.#metrics.advanceMm(' ', this.#rs.sizeMm);
+        this.#inline = { xMm: xMm + typeset.widthMm + spaceMm, baselineYMm };
+        if (!inlineFits) this.#rowTopMm = this.#snap(this.#rowTopMm + h);
         if (typeset.overflowMm !== null) args.problems.push(overflowProblem(typeset.overflowMm));
         if (typeset.missing.length > 0) {
           args.problems.push({
@@ -745,19 +760,27 @@ class LayoutRun {
     const fit = this.#fitScaleFor(text, size, mono, args.innerWidth);
     if (fit.overflow !== null) args.problems.push(overflowProblem(fit.overflow));
 
-    return this.#flowText({
+    const inlineStart = child.kind === 'prose' && (child.emphasis ?? 'normal') === 'normal'
+      ? (this.#inline ?? undefined)
+      : undefined;
+    const flowed = this.#flowText({
       blockId: args.parentId,
       seed,
       text,
       sizeMm: size * fit.fitScale,
       monoAdvanceMm: mono === null ? null : mono * fit.fitScale,
       columnWidthMm: args.innerWidth,
+      inlineStart,
       xStartMm: args.innerX,
       charsBefore: args.charsBefore,
       frags: args.frags,
       problems: args.problems,
       lineIndexBase: args.lineIndexBase,
     });
+    this.#inline = child.kind === 'prose' && child.emphasis === 'heading'
+      ? null
+      : this.#lastFlowEndMm;
+    return flowed;
   }
 
   finish(styleHashValue: string): DocumentGeometry {
