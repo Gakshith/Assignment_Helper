@@ -87,13 +87,29 @@ def _metadata_version() -> str:
 
 def parse_describe(described: str, fallback_base: str) -> VersionInfo:
     """Pure. The whole rule set, testable without a git repository."""
-    exact = _EXACT_TAG.match(described)
+    # Strip a trailing -dirty BEFORE any tag match. Without this, `v1.0.0-dirty`
+    # matches _EXACT_TAG: `-dirty` is absorbed by the optional prerelease group, and an
+    # uncommitted tree sitting on a release tag reports as a CLEAN RELEASE BUILD with no
+    # banner in the terminal, no badge in the UI and no sha in the PDF Producer field.
+    # That is the exact failure the three-place dev-build guard exists to prevent, so
+    # the dirty flag is decided first and separately from anything else.
+    stripped = described
+    dirty_suffix = False
+    if stripped.endswith("-dirty"):
+        stripped = stripped[: -len("-dirty")]
+        dirty_suffix = True
+
+    exact = _EXACT_TAG.match(stripped)
     if exact:
-        return VersionInfo(
-            version=exact.group("base"),
-            dev_build=False,
-            note="clean tag",
-        )
+        base = exact.group("base")
+        if dirty_suffix:
+            return VersionInfo(
+                version=f"{base}.dev+dirty",
+                dev_build=True,
+                dirty=True,
+                note=f"on tag {base} but the working tree has uncommitted changes",
+            )
+        return VersionInfo(version=base, dev_build=False, note="clean tag")
 
     hit = _DESCRIBED.match(described)
     if hit:
