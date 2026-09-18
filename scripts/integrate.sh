@@ -15,7 +15,9 @@ cd "$(dirname "$0")/.."
 
 PY=.venv/bin/python
 fail=0
-step() { printf '\n\033[1m== %s\033[0m\n' "$1"; }
+steps_run=0
+TOTAL_STEPS=11
+step() { steps_run=$((steps_run + 1)); printf '\n\033[1m== %s\033[0m\n' "$1"; }
 check() { if "$@"; then echo "  ok"; else echo "  FAILED: $*"; fail=1; fi; }
 
 step "1. Frozen files unchanged since the seam-freeze"
@@ -65,7 +67,22 @@ step "7. TypeScript tests"
 check npx vitest run --config vitest.config.ts
 
 step "8. I1 — no banned global under render/**"
-if grep -rnE '\b(Math\.random|new Date|Date\.now|performance\.now|crypto\.getRandomValues)\b' web/src/render/ 2>/dev/null; then
+# Comment-blind greps punish documentation. The paper strand's first draft failed this
+# check for writing "never call performance.now() here" in a doc comment - i.e. for
+# saying the right thing. That teaches strands to stop explaining themselves.
+#
+# Comments are stripped BEFORE matching: whole-line // and * and /* lines are dropped,
+# and a trailing // comment is cut from the line. What remains is code.
+BANNED='\b(Math\.random|new Date|Date\.now|performance\.now|crypto\.getRandomValues)\b'
+i1_hits=$(
+  find web/src/render -name '*.ts' -print0 2>/dev/null |
+  while IFS= read -r -d '' f; do
+    sed -e 's@//.*$@@' -e '/^[[:space:]]*[*]/d' -e '/^[[:space:]]*\/\*/d' "$f" |
+      grep -nE "$BANNED" | sed "s@^@$f:@"
+  done
+) || true
+if [ -n "$i1_hits" ]; then
+  echo "$i1_hits"
   echo "  FAILED: geometry determinism is broken by the hits above (invariant I1)."
   echo "  Instrumentation belongs in kernel.ts, which is outside the banned tree."
   fail=1
@@ -95,6 +112,16 @@ else
 fi
 
 echo
+# Guard against this script dying quietly. `set -e` plus any command that legitimately
+# exits non-zero (grep finding nothing) will abort mid-run, and an abort that returns 0
+# reports GREEN while having skipped checks. That happened, in step 8, and it is the
+# same silent failure the script exists to catch.
+if [ "$steps_run" -ne "$TOTAL_STEPS" ]; then
+  echo -e "\033[31mHARNESS ABORTED\033[0m — ran $steps_run of $TOTAL_STEPS checks."
+  echo "  Do not read this as a pass. Fix the harness first."
+  exit 2
+fi
+
 if [ $fail -eq 0 ]; then
   echo -e "\033[32mINTEGRATION GREEN\033[0m — tag it: git tag known-good-$(date +%Y%m%d)"
 else
