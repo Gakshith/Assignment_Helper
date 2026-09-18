@@ -16,9 +16,26 @@ cd "$(dirname "$0")/.."
 PY=.venv/bin/python
 fail=0
 steps_run=0
-TOTAL_STEPS=11
+TOTAL_STEPS=12
 step() { steps_run=$((steps_run + 1)); printf '\n\033[1m== %s\033[0m\n' "$1"; }
 check() { if "$@"; then echo "  ok"; else echo "  FAILED: $*"; fail=1; fi; }
+
+step "0. The toolchain is actually usable"
+# This exists because a broken node_modules does not fail loudly - `npx tsc` and
+# `npx vitest` produce NO OUTPUT AT ALL and exit non-zero, which reads like a quiet
+# pass if you are skimming. It happened twice: a symlink pointing at itself, left
+# behind by worktree setup. Checking the toolchain before trusting anything it says.
+if [ ! -x node_modules/.bin/tsc ] || [ ! -x node_modules/.bin/vitest ]; then
+  echo "  FAILED: node_modules is missing or broken (node_modules/.bin/tsc not executable)."
+  echo "  A broken node_modules makes tsc and vitest emit nothing, which looks like silence,"
+  echo "  not like failure. Run: rm -f node_modules && npm install"
+  exit 2
+fi
+if [ ! -x .venv/bin/python ]; then
+  echo "  FAILED: .venv is missing. Run: uv venv --python 3.14 .venv && uv pip install --python .venv/bin/python -e '.[dev]'"
+  exit 2
+fi
+echo "  ok"
 
 step "1. Frozen files unchanged since the seam-freeze"
 FROZEN=(
