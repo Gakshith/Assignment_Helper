@@ -10,7 +10,8 @@
     "lint": "eslint web/src"
   },
   "dependencies": {
-    "katex": "0.16.11"
+    "katex": "0.16.11",
+    "opentype.js": "^2.0.0"
   },
   "devDependencies": {
     "@eslint/js": "9.17.0",
