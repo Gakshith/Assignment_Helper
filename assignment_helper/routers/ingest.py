@@ -66,6 +66,48 @@ async def ingest_markdown(body: MarkdownRequest) -> Document:
     return parse_markdown(body.text, doc_id=body.doc_id, source_path=body.source_path)
 
 
+@router.post("/screenshot")
+async def ingest_screenshot(request: Request) -> dict[str, object]:
+    """Tier 3: a screenshot of the assignment becomes a Document.
+
+    The image arrives as a raw body, not JSON: base64 in a JSON envelope costs a third
+    more bytes and an encode/decode on both sides for a payload that is already binary.
+
+    Returns the transcription and the parsed blocks WITHOUT applying them. The caller
+    reviews first — a transcription is a reading of a photograph, and a misread exponent
+    becomes a wrong answer three steps later that nothing downstream will catch.
+    """
+    from assignment_helper.ingest.markdown import parse_markdown
+    from assignment_helper.ingest.vision import transcribe
+    from assignment_helper.llm.client import LLMProblem
+    from assignment_helper.routers.chat import get_llm_client
+
+    client = get_llm_client(request.app)
+    if client is None:
+        raise _fail(503, "ingest.no-client", "The AI client was never registered.")
+
+    image = await request.body()
+    hint = request.headers.get("x-ah-hint", "")
+
+    try:
+        result = transcribe(client, image, hint=hint)
+    except LLMProblem as problem:
+        raise HTTPException(
+            status_code=422 if problem.code.startswith("ingest.") else 502,
+            detail={"code": problem.code, "message": problem.message, "detail": problem.detail},
+        ) from problem
+
+    document = parse_markdown(result.markdown, doc_id="screenshot", source_path=None)
+    return {
+        "markdown": result.markdown,
+        "blocks": [b.model_dump() for b in document.blocks],
+        # Surfaced, never buried: a transcription with holes must not be presented as
+        # complete, and the student is the only one who can fill them in.
+        "hasUnreadable": result.has_unreadable,
+        "bytes": len(image),
+    }
+
+
 @router.post("/file")
 async def ingest_file(request: Request, body: FileRequest) -> Snapshot:
     """Read a source file, parse it, and make it the open document.

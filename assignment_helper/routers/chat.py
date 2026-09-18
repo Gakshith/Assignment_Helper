@@ -34,6 +34,12 @@ def set_llm_client(app, client: LLMClient) -> None:
     setattr(app.state, _CLIENT_KEY, client)
 
 
+def get_llm_client(app) -> LLMClient | None:
+    """The one place the client lives. Other routers ask HERE rather than keeping a
+    second reference that can drift out of step with --offline or a revoked key."""
+    return getattr(app.state, _CLIENT_KEY, None)
+
+
 def _client(request: Request) -> LLMClient:
     client = getattr(request.app.state, _CLIENT_KEY, None)
     if client is None:
