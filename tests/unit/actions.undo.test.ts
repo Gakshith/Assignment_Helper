@@ -50,6 +50,7 @@ function harness() {
     currentVersion: () => version,
     resync: async () => {},
     headers: (extra = {}) => ({ ...extra }),
+    cropSelection: async () => null,
   });
   return { actions, sent, problems };
 }
@@ -106,6 +107,15 @@ describe('editor actions', () => {
     expect(sent[0]!.ops).toHaveLength(2);
   });
 
+  it('block text comes from the DOCUMENT, not from glyph placements', () => {
+    // Rebuilding text from what was drawn drops every space, because a space is an
+    // advance and not a glyph. That string was being shown in the edit box and sent to
+    // the model as the selection text: "Ablockofmass".
+    const { actions } = harness();
+    expect(actions.blockText('b1')).toBe('first');
+    expect(actions.blockText('nope')).toBeNull();
+  });
+
   it('the next seed is deterministic, never random', () => {
     // A Math.random() here would make the page unreproducible forever after, which is
     // the one thing the seeded architecture exists to prevent.
@@ -146,6 +156,7 @@ describe('editor actions', () => {
       currentVersion: () => 0,
       resync: async () => {},
     headers: (extra = {}) => ({ ...extra }),
+    cropSelection: async () => null,
     });
 
     await actions.editBlock('b1', 'edited');

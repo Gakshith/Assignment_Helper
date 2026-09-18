@@ -32,6 +32,7 @@ import type {
   ProblemSink,
   ProtocolClient,
   RerollScale,
+  SelectionCrop,
   SelectionModel,
   Style,
 } from './contracts';
@@ -55,6 +56,8 @@ export interface ActionsDeps {
   resync(): Promise<void>;
   /** Request headers, so the session token (I16) is added in exactly one place. */
   headers(extra?: Record<string, string>): Record<string, string>;
+  /** Implemented by the kernel: it alone holds both geometry and the page canvases. */
+  cropSelection(blockIds: readonly string[]): Promise<SelectionCrop | null>;
 }
 
 export class KernelActions implements EditorActions {
@@ -126,6 +129,18 @@ export class KernelActions implements EditorActions {
   #setSolving(v: boolean): void {
     this.#solving = v;
     for (const h of this.#solveHandlers) h(v);
+  }
+
+  async cropSelection(blockIds: readonly string[]): Promise<SelectionCrop | null> {
+    return this.deps.cropSelection(blockIds);
+  }
+
+  blockText(blockId: string): string | null {
+    const block = this.deps.currentDoc()?.blocks?.find((b) => b.id === blockId);
+    if (!block) return null;
+    if (block.kind === 'prose') return block.text;
+    if (block.kind === 'math') return block.latex;
+    return null;
   }
 
   async solve(): Promise<SolveOutcome> {

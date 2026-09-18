@@ -6,6 +6,7 @@ test that monkeypatches httpx and asserts no outbound body contains a profile ma
 string, and that the only outbound host ever contacted is api.anthropic.com."
 """
 
+import base64
 import json
 
 import pytest
@@ -35,7 +36,7 @@ def test_no_outbound_body_contains_a_profile_marker():
         question="Is step 3 right?",
         selection=SelectionContext(block_ids=["b1"], text="I = 1/2 M R^2", page_index=0),
         document_text="Problem 1 ...",
-        image_crop_png=b"\x89PNG\r\n\x1a\n fake pixels",
+        image_crop_png=base64.b64encode(b"\x89PNG\r\n\x1a\n fake pixels").decode(),
     )
     body = json.dumps(payload.to_messages())
     assert PROFILE_MARKER not in body
@@ -43,11 +44,23 @@ def test_no_outbound_body_contains_a_profile_marker():
         assert forbidden not in body
 
 
+def test_a_base64_crop_round_trips_to_the_original_png():
+    # The wire format is JSON, so the crop arrives base64. A plain `bytes` field would
+    # read the base64 STRING as UTF-8 bytes and forward a corrupt image to the model -
+    # an error that produces a confident answer about nothing.
+    png = b"\x89PNG\r\n\x1a\n" + bytes(range(64))
+    payload = ChatPayload(question="q", image_crop_png=base64.b64encode(png).decode())
+    image = [c for c in payload.to_messages()[0]["content"] if c["type"] == "image"][0]
+    assert image["source"]["media_type"] == "image/png"
+    assert base64.b64decode(image["source"]["data"]) == png
+
+
 def test_the_image_crop_is_the_rendered_page_and_is_carried_deliberately():
     # I9's honest half: a rendered page IS a picture of the user's hand, and it is sent
     # when they ask about it. The test exists so nobody "fixes" the README back to the
     # false claim that handwriting never leaves the machine.
-    payload = ChatPayload(question="q", image_crop_png=b"\x89PNG\r\n\x1a\n")
+    png = b"\x89PNG\r\n\x1a\n"
+    payload = ChatPayload(question="q", image_crop_png=base64.b64encode(png).decode())
     messages = payload.to_messages()
     kinds = [c["type"] for c in messages[0]["content"]]
     assert "image" in kinds

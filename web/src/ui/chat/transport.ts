@@ -76,7 +76,25 @@ export interface AskOptions {
   readonly question: string;
   readonly blockIds: readonly string[];
   readonly selectionText: string;
+  /**
+   * PNG of the rendered page, cropped to the selection. Differentiator #2.
+   *
+   * Invariant I9's uncomfortable half, and it is deliberate: this IS a picture of the
+   * user's handwriting. It travels only because they asked a question about it.
+   */
+  readonly cropPng?: Uint8Array | undefined;
   readonly signal?: AbortSignal;
+}
+
+function base64(bytes: Uint8Array): string {
+  let s = '';
+  // Chunked: String.fromCharCode(...bytes) on a few hundred KB overflows the argument
+  // limit and throws, which would silently kill the request that carries the image.
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    s += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(s);
 }
 
 export async function* ask(opts: AskOptions): AsyncGenerator<ChatEvent> {
@@ -94,7 +112,7 @@ export async function* ask(opts: AskOptions): AsyncGenerator<ChatEvent> {
           ? { block_ids: [...opts.blockIds], text: opts.selectionText, page_index: 0 }
           : null,
         document_text: '',
-        image_crop_png: null,
+        image_crop_png: opts.cropPng ? base64(opts.cropPng) : null,
       },
     }),
   });

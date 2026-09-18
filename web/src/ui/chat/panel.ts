@@ -21,6 +21,7 @@ function el<K extends keyof HTMLElementTagNameMap>(
 
 export class DockedChatPanel implements ChatPanel {
   readonly name = 'chat';
+  #actions: EditorActions | null = null;
   #log: HTMLElement | null = null;
   #input: HTMLTextAreaElement | null = null;
   #scope: HTMLElement | null = null;
@@ -31,6 +32,7 @@ export class DockedChatPanel implements ChatPanel {
   constructor(private readonly token: string | null) {}
 
   mount(host: HTMLElement, actions: EditorActions): void {
+    this.#actions = actions;
     host.replaceChildren();
     host.classList.add('chat-dock');
 
@@ -104,6 +106,22 @@ export class DockedChatPanel implements ChatPanel {
     if (this.#input) this.#input.value = '';
 
     this.#append('you', question);
+
+    /**
+     * Send the work AS IT LOOKS, not a transcription of it. This is differentiator #2:
+     * asking "is step 3 right?" about a picture of the page is a different question
+     * from asking it about a string, and the string is what every competitor sends.
+     */
+    let crop: Awaited<ReturnType<EditorActions['cropSelection']>> = null;
+    if (blockIds.length > 0 && this.#actions) {
+      try {
+        crop = await this.#actions.cropSelection(blockIds);
+      } catch (err) {
+        // Not swallowed: the question still goes, but the user is told it went without
+        // the image rather than silently getting a worse answer.
+        this.#append('state', `could not attach the page image: ${String(err)}`);
+      }
+    }
     // Gate G14 measures time to FIRST ANYTHING on screen, so a state line goes up
     // immediately — adaptive thinking puts first content many seconds out by design.
     const status = this.#append('state', 'thinking…');
@@ -114,7 +132,8 @@ export class DockedChatPanel implements ChatPanel {
         token: this.token,
         question,
         blockIds,
-        selectionText: '',
+        selectionText: crop?.text ?? '',
+        cropPng: crop?.png,
         signal: this.#abort.signal,
       })) {
         this.#render(ev, status, () => {

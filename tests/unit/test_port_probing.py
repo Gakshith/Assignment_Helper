@@ -30,6 +30,7 @@ def _free_ports(count: int) -> list[int]:
     socks = [socket.socket(socket.AF_INET, socket.SOCK_STREAM) for _ in range(count)]
     try:
         for s in socks:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             s.bind(("127.0.0.1", 0))
         ports = [s.getsockname()[1] for s in socks]
     finally:
@@ -57,6 +58,10 @@ def test_exhausting_the_range_refuses_with_a_message(monkeypatch):
         for _ in range(2):
             port = app_module.choose_port()
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            # SO_REUSEADDR, matching choose_port's own probe. Without it the probe's
+            # just-closed socket leaves the port in TIME_WAIT and this bind fails with
+            # EADDRINUSE - a flake that looks exactly like a real port conflict.
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("127.0.0.1", port))
             sock.listen(1)
             held.append(sock)

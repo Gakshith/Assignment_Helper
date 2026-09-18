@@ -21,6 +21,7 @@ import { KernelActions } from './actions';
 import type {
   ChatPanel,
   EditorActions,
+  SelectionCrop,
   Delta,
   Document,
   ExportController,
@@ -349,6 +350,7 @@ export class Kernel {
         const snap = await subsystems.protocol.snapshot();
         this.store.adoptSnapshot(snap.version, snap.document);
       },
+      cropSelection: async (blockIds) => this.#cropSelection(blockIds),
       headers: (extra = {}) => {
         const h: Record<string, string> = { ...extra };
         let token: string | null = null;
@@ -525,6 +527,69 @@ export class Kernel {
 
   get geometry(): DocumentGeometry | null {
     return this.#geometry;
+  }
+
+  /**
+   * Crop the rendered page to a selection. Differentiator #2.
+   *
+   * Composites paper and ink, and deliberately NOT the overlay: a badge or a selection
+   * highlight in the crop would have the model answering about our chrome instead of
+   * the user's work. Same rule as export (§C.5.4), for a different reason.
+   */
+  async #cropSelection(blockIds: readonly string[]): Promise<SelectionCrop | null> {
+    const geometry = this.#geometry;
+    const style = this.store.style;
+    if (!geometry || !style || blockIds.length === 0) return null;
+
+    let pageIndex: number | null = null;
+    let box: RectMm | null = null;
+    const texts: string[] = [];
+    for (const page of geometry.pages) {
+      for (const b of page.blocks) {
+        if (!blockIds.includes(b.blockId)) continue;
+        // One crop, one page: a selection spanning a page break has no single image.
+        if (pageIndex === null) pageIndex = page.pageIndex;
+        if (page.pageIndex !== pageIndex) continue;
+        box = box ? rectUnion(box, b.boxMm) : b.boxMm;
+        // From the document, never rebuilt from glyphs: a space is an advance, not a
+        // glyph, so a reconstruction reads "Ablockofmass".
+        const source = this.store.doc?.blocks?.find((blk) => blk.id === b.blockId);
+        const text =
+          source?.kind === 'prose' ? source.text : source?.kind === 'math' ? source.latex : '';
+        if (text) texts.push(text);
+      }
+    }
+    if (pageIndex === null || !box) return null;
+
+    const layers = this.pages.get(pageIndex);
+    if (!layers) return null;
+
+    // A little margin, so the model sees the line in context rather than clipped.
+    const padMm = 3;
+    const dpi = layers.dpi;
+    const sx = Math.max(0, Math.floor(mmToPx(box.xMm - padMm, dpi)));
+    const sy = Math.max(0, Math.floor(mmToPx(box.yMm - padMm, dpi)));
+    const sw = Math.min(layers.ink.width - sx, Math.ceil(mmToPx(box.wMm + padMm * 2, dpi)));
+    const sh = Math.min(layers.ink.height - sy, Math.ceil(mmToPx(box.hMm + padMm * 2, dpi)));
+    if (sw <= 0 || sh <= 0) return null;
+
+    const out = document.createElement('canvas');
+    out.width = sw;
+    out.height = sh;
+    const ctx = out.getContext('2d');
+    if (!ctx) throw new Error('crop: no 2d context');
+    ctx.drawImage(layers.paper, sx, sy, sw, sh, 0, 0, sw, sh);
+    ctx.drawImage(layers.ink, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    const blob = await new Promise<Blob | null>((resolve) => out.toBlob(resolve, 'image/png'));
+    if (!blob) return null;
+    return {
+      png: new Uint8Array(await blob.arrayBuffer()),
+      text: texts.join('\n'),
+      pageIndex,
+      widthMm: box.wMm,
+      heightMm: box.hMm,
+    };
   }
 
   /** §C.5.4: export is refused while any block carries a problem badge. */

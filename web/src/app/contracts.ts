@@ -134,6 +134,29 @@ export interface EditorActions {
    * make the doubt visible before the page is handed in.
    */
   solve(): Promise<SolveOutcome>;
+
+  /**
+   * A PNG crop of the RENDERED PAGE covering these blocks, plus their text.
+   *
+   * §B.2's differentiator #2: you ask about the work as it appears, not about a
+   * transcription of it. The kernel owns this because it is the only thing holding both
+   * the geometry and the page canvases.
+   *
+   * Invariant I9, stated exactly: this IS a picture of the user's handwriting, and it
+   * leaves the machine when — and only when — they ask a question about it. That is a
+   * per-question choice, not a background upload, and it is why the README's privacy
+   * claim is about the SAMPLES and the profile rather than about rendered output.
+   */
+  cropSelection(blockIds: readonly string[]): Promise<SelectionCrop | null>;
+
+  /**
+   * A block's source text (prose) or LaTeX (math), from the DOCUMENT.
+   *
+   * Never reconstructed from glyph placements. A space is an advance, not a glyph, so
+   * rebuilding text from what was drawn yields "Ablockofmass" — which was being shown
+   * in the edit box and sent to the model as the selection text.
+   */
+  blockText(blockId: string): string | null;
   readonly solving: boolean;
   onSolveStateChange(handler: (solving: boolean) => void): void;
 
@@ -157,6 +180,16 @@ export interface EditorActions {
 
 /** Re-roll at three scales — plan §C.1's M4 wording, made concrete. */
 export type RerollScale = 'block' | 'page' | 'document';
+
+export interface SelectionCrop {
+  /** PNG bytes of the rendered ink over its paper, cropped to the selection. */
+  readonly png: Uint8Array;
+  /** The plain text or LaTeX of the selected blocks, in reading order. */
+  readonly text: string;
+  readonly pageIndex: number;
+  readonly widthMm: number;
+  readonly heightMm: number;
+}
 
 export interface SolveOutcome {
   readonly applied: boolean;

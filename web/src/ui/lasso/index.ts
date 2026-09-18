@@ -24,7 +24,6 @@ export class Lasso implements LassoController {
   readonly #index = new SpatialIndex();
   #actions: EditorActions | null = null;
   #editor: HTMLTextAreaElement | null = null;
-  #blockText = new Map<string, string>();
   #host: HTMLElement | null = null;
   #box: HTMLElement | null = null;
   #toolbar: HTMLElement | null = null;
@@ -34,16 +33,9 @@ export class Lasso implements LassoController {
   /** Called whenever geometry changes. Cheap: rebuilding 20 pages is a few ms. */
   setGeometry(geometry: DocumentGeometry | null): void {
     this.#index.rebuild(geometry?.pages ?? []);
-    // Remember each block's text so Edit can open with what is actually on the page.
-    this.#blockText.clear();
-    for (const page of geometry?.pages ?? []) {
-      for (const block of page.blocks) {
-        const text = block.lines
-          .flatMap((l) => l.glyphs.map((g) => g.ch))
-          .join('');
-        if (text) this.#blockText.set(block.blockId, text);
-      }
-    }
+    // Edit reads the block's SOURCE from the document via actions.blockText(). It used
+    // to rebuild the string from glyph placements, which drops every space because a
+    // space is an advance and not a glyph — the edit box opened on "Ablockofmass".
   }
 
   mount(host: HTMLElement, actions: EditorActions): void {
@@ -187,7 +179,7 @@ export class Lasso implements LassoController {
       this.#editor = ta;
     }
     const ta = this.#editor;
-    ta.value = this.#blockText.get(blockId) ?? '';
+    ta.value = actions.blockText(blockId) ?? '';
     ta.hidden = false;
     const sel = this.#selectionRect();
     if (sel) {

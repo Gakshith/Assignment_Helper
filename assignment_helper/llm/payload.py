@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import base64
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Base64Bytes, BaseModel, ConfigDict, Field
 
 #  The ONLY host this application ever contacts. Asserted by a test that monkeypatches
 #  the transport. No telemetry, no crash reporting, no font service.
@@ -52,9 +52,13 @@ class ChatPayload(BaseModel):
     question: str
     selection: SelectionContext | None = None
     document_text: str = ""
-    #  A PNG/JPEG crop of the RENDERED PAGE. This is the user's own document, sent
-    #  because they asked a question about it. It is never sent unprompted.
-    image_crop_png: bytes | None = None
+    #  A PNG crop of the RENDERED PAGE. The user's own document, sent because they
+    #  asked a question about it, never unprompted.
+    #
+    #  Base64Bytes, not bytes: the wire format is JSON, and a plain `bytes` field would
+    #  read the base64 STRING as UTF-8 bytes and forward that to the model as a
+    #  corrupt image — an error that produces a confident answer about nothing.
+    image_crop_png: Base64Bytes | None = None
 
     def to_messages(self) -> list[dict]:
         content: list[dict] = []
