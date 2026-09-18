@@ -59,51 +59,63 @@ spent.
 - `spikes/m0/index.html` — open it by double-clicking. No server, no build step.
   The fonts are embedded; if they fail to load the page refuses to render and shows
   a red banner. **If you see that banner, stop. Nothing produced in that state counts.**
-- A printer. Note which kind (laser or inkjet) — §6 explains why it matters.
-- One stack of identical blank sheets, enough for 10 prints.
+- **No printer.** See §6 — this gate runs on a screen, because that is where the work
+  is actually judged.
+- 5 sheets of your ordinary ruled paper, from one pad.
 - The pen you normally do homework with.
+- Whatever you would really use to capture homework — phone camera, or a scanning app.
 - One judge who has not seen any of this.
 
 ---
 
-## 3. Producing the sheets
+## 3. Producing the ten images
 
-Both stacks must be the same paper with the same rules, or the judge is sorting on
-paper stock instead of handwriting. So the rules get **printed on both stacks**.
+The judge compares **ten images on a screen**, five rendered and five real. The whole
+validity of the result rests on one thing:
 
-**Step 1 — five blank ruled sheets, for you to write on.**
+> **Both stacks must reach the screen by the same route.** If the rendered ones are
+> clean digital exports and the real ones are phone photographs, the judge sorts on
+> the capture and learns nothing about the handwriting. This is the mirror image of
+> the sheen problem in §6, and it is just as capable of producing a false >= 8.
 
-1. Open `index.html`.
-2. Leave Surface = **Ruled**, Sheet = **Letter**.
-3. **Clear the page text box completely.** The status line should read `0 lines, 0 glyphs`.
-4. Click **Print this sheet**. In the print dialog set **Scale: 100 % / Actual size**
-   and **Margins: None**. Print 5 copies.
+**Step 1 — match the tool's paper to your actual paper.**
 
-**Step 2 — five machine-written sheets.**
+Open `index.html`, Surface = **Ruled**. US college ruled is 7.1 mm between rules with
+the margin 1.25 in from the left, which is what the tool draws by default. Hold a
+sheet of your pad against the screen at 100 % zoom and check they line up. Adjust
+**Tint** so the on-screen paper is about the shade of yours. If your pad is a
+different ruling, say so in the results table — a visible mismatch in rule spacing
+is something the judge can sort on.
 
-1. Put the sample text back (click **Cycle sample passage** until passage 1 returns,
-   or reload the page).
-2. Click **Build print kit — 5 sheets @ 300 DPI**. It renders 5 sheets from 5
-   different seeds and 5 different passages, then opens the print dialog.
-3. Same dialog settings: **Scale 100 %**, **Margins None**. Print once.
+**Step 2 — handwrite five passages.**
 
-Each sheet is 2550 × 3300 px at 300 DPI = exactly 8.5 × 11 in, laid out with
-`@page { size: 215.9mm 279.4mm; margin: 0 }`. Verified: the PDF Chrome produces is
-5 pages at exactly 612 × 792 pt.
+Cycle through the tool's five sample passages and copy each one onto a sheet, in
+order, in your ordinary handwriting at your ordinary speed. Do not neaten up, do not
+slow down, and do not start a sheet over because a line went badly — a discarded bad
+line is exactly the evidence this experiment needs.
 
-**Step 3 — measure one printed sheet before you go further.** Put a ruler on the
-red margin rule: it should be **1.25 in (31.75 mm)** from the left edge, and the
-blue rules should be **7.1 mm** apart. If they are not, your printer scaled the page
-and the whole run is invalid. Fix the dialog and reprint.
+**Step 3 — capture those five the way you would really submit them.**
 
-**Step 4 — handwrite the same five passages.**
+Same phone or scanner app, same lighting, same settings, same export. Write down
+exactly what you did; it goes in the results table and it is what Step 4 has to match.
 
-Copy the five passages from the tool's text box, in order, one per blank sheet, in
-your ordinary handwriting at your ordinary speed. Do not neaten up. Do not slow
-down. Do not start over because a line went badly — a discarded bad line is exactly
-the evidence the experiment needs.
+**Step 4 — render the other five through the capture path.**
 
-You now have 10 sheets: 5 printed, 5 written.
+1. In the tool, turn **JPEG pass ON** and **Scan blur ON**. These exist precisely so
+   a rendered page carries the same compression and softness a captured page does.
+2. Set **Quality** to roughly match what your capture route produces. A phone photo
+   or a scanner app's export is usually somewhere around 0.7-0.8.
+3. Set **Render DPI** to 300, then **Build print kit — 5 sheets @ 300 DPI**, which
+   renders five sheets from five different seeds and five different passages.
+4. Save those five images rather than printing them.
+
+If your capture route deskews, crops and thresholds (most scanner apps do), the
+rendered images will look conspicuously *flatter* than the real ones. Say so in the
+results and treat it the way §6 treats sheen: a >= 8 whose debrief is about the
+capture has not tested letterforms.
+
+**Step 5 — present all ten identically.** One viewer, one zoom level, shuffled, file
+names not visible. Rename them `sheet-01` … `sheet-10` before the judge sees anything.
 
 ---
 
@@ -152,24 +164,51 @@ sentence is the next thing to fix. Typical answers and what each implies:
 
 ---
 
-## 6. The confound you must record
+## 6. Why this runs ON A SCREEN, not on paper
 
-The machine sheets are toner or inkjet ink; the handwritten sheets are pen. A judge
-may sort correctly on **ink sheen, paper indentation, or edge texture** without ever
-looking at a letterform. This experiment cannot eliminate that — printing is how the
-real product is used, so it belongs in the test — but it changes what a **≥ 8**
-result means.
+**Revised 2026-09-17 by the lead. The earlier version of this section required
+printing and was wrong.**
 
-So: if the score is ≥ 8 **and** the debrief answer is about ink, sheen, gloss, or
-"you can feel it," then **the gate has not actually tested letterforms** and
-centerlines are not yet justified. Re-run it with the judge looking at
-**photographs** of the 10 sheets on a screen instead of the sheets themselves, which
-removes the physical cue and leaves only the marks. Use that score for the verdict.
+It said "printing is how the real product is used, so it belongs in the test."
+That is false for this product. The course wants a **PDF of handwritten pages,
+uploaded**. The grader opens it on a screen. No one ever holds the paper.
 
-Record which printer you used. An inkjet on absorbent paper is much closer to pen
-than a laser is.
+That matters more than convenience, because the physical cues are **biased in one
+direction**. A judge handling real sheets can sort correctly on ink sheen, paper
+indentation and edge texture — none of which exist in a PDF. Those cues can only
+push the score UP, toward the >= 8 that commits 25-35 days to centerlines. A print
+test can therefore talk you into a month of work on evidence the delivery format
+does not carry.
 
----
+So the screen test is not a fallback. **It is the experiment**, because it is the
+only one that runs through the same channel the work is actually judged in.
+
+### Both stacks must reach the screen the same way
+
+This is the part that decides whether the result means anything.
+
+- **The 5 rendered sheets** go through the real pipeline: render -> JPEG capture pass
+  -> PDF. Exactly the artifact you would submit.
+- **The 5 real sheets** are handwritten, then captured **the way you would actually
+  submit your own homework** — the same phone, the same lighting, the same scanner
+  app, the same export settings. If you would normally use a scanning app that
+  deskews and thresholds, use it.
+
+If the two stacks reach the screen by different routes, the judge sorts on the
+capture, not on the handwriting, and the experiment is void. Same viewer, same zoom,
+same order, no filenames visible.
+
+### You still need a printer, but not for this
+
+A printer is a **hard dependency for M2**, where you print the tracing sheet with its
+ArUco corner markers and write your own glyphs into its cells. There is no way around
+a physical sheet for that. It is simply not a blocker for M0.
+
+### If you ever do need paper
+
+If a course later requires physical submission, re-run this on paper and record the
+printer — an inkjet on absorbent stock is much closer to pen than a laser is. Treat
+that as a separate, additional result, not a replacement for this one.
 
 ## 7. Results
 
@@ -178,7 +217,8 @@ Fill this in. Keep it in the repo next to this file.
 ```
 Date:                      ____________________
 Judge (initials only):     ____________________
-Printer (laser / inkjet):  ____________________
+Viewer / zoom used:        ____________________
+Capture route (BOTH stacks must match): ____________________
 Paper stock:               ____________________
 Pen used:                  ____________________
 Tool settings — font: __________  neatness: ______  seed(s): 1013, 2741, 4099, 6311, 8663
