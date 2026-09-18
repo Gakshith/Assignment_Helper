@@ -1,4 +1,7 @@
 // OWNER: the paper strand. Replace the export; do not touch main.ts.
-import { stubPaper } from '../../app/stubs';
 import type { PaperEngine } from '../../app/contracts';
-export const paperEngine: PaperEngine = stubPaper;
+import { createPaperEngine } from './engine';
+
+export const paperEngine: PaperEngine = createPaperEngine();
+
+export { createPaperEngine, type ProceduralPaperEngine } from './engine';
