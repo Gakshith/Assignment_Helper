@@ -592,6 +592,11 @@ export class Kernel {
     };
   }
 
+  /** Which hand the document is written in. The studio labels it honestly. */
+  currentProfile(): string {
+    return this.store.style?.hand?.profile ?? 'reference';
+  }
+
   /** §C.5.4: export is refused while any block carries a problem badge. */
   get canExport(): boolean {
     return this.problems.all.every((p) => p.scope !== 'block') && this.subsystems.exporter.canExport;

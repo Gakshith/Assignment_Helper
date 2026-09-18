@@ -11,11 +11,43 @@
 
 import { mountChrome } from './chrome';
 import { mountActionBar } from './actionbar';
+import { createGlyphStudio, request } from '../glyphstudio/index';
 
 interface KernelLike {
   actions: Parameters<typeof mountActionBar>[1]['actions'];
   exportPdf(dpi?: number): Promise<{ path: string } | null>;
   readonly canExport: boolean;
+  currentProfile(): string;
+}
+
+/**
+ * The glyph studio lives in the right panel, behind the rail's hand icon.
+ *
+ * Acceptance row 9: with no profile this is where a first launch lands, and it must
+ * read as a starting point rather than an error — a page already renders in the
+ * reference hand while the user decides whether to make their own.
+ */
+function attachGlyphStudio(kernel: KernelLike): void {
+  const panel = document.getElementById('right-panel');
+  if (!panel) return;
+
+  const mount = document.createElement('section');
+  mount.id = 'glyph-studio';
+  mount.hidden = true;
+  panel.append(mount);
+
+  const studio = createGlyphStudio({
+    actions: kernel.actions,
+    currentProfile: () => kernel.currentProfile(),
+    request,
+  } as never);
+  studio.mount(mount);
+
+  const toggle = document.getElementById('rail-hand');
+  toggle?.addEventListener('click', () => {
+    mount.hidden = !mount.hidden;
+    if (!mount.hidden) void studio.refresh();
+  });
 }
 
 function attachActionBar(kernel: KernelLike): void {
@@ -37,12 +69,16 @@ function boot(): void {
   // The kernel is a separate entry with no ordering guarantee, so handle both: it may
   // already be up, or it may announce itself later.
   const existing = (globalThis as { __kernel?: KernelLike }).__kernel;
+  const attach = (kernel: KernelLike): void => {
+    attachActionBar(kernel);
+    attachGlyphStudio(kernel);
+  };
   if (existing) {
-    attachActionBar(existing);
+    attach(existing);
   } else {
     globalThis.addEventListener(
       'ah:kernel-ready',
-      (ev) => attachActionBar((ev as CustomEvent<KernelLike>).detail),
+      (ev) => attach((ev as CustomEvent<KernelLike>).detail),
       { once: true },
     );
   }

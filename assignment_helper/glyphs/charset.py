@@ -107,4 +107,36 @@ def label_for(ch: str) -> str:
         ":": "colon :",
         ";": "semicolon ;",
     }
-    return named.get(ch, ch)
+    if ch in named:
+        return named[ch]
+    # Greek and the maths operators are NAMED rather than shown, because the sheet's
+    # label font cannot draw them: Pillow's bundled default has no Greek block, so
+    # printing the character itself gives the user a tofu box and no idea what to
+    # write in that cell. On a sheet they are about to spend an hour filling in, a
+    # box that says nothing is worse than a box that says "alpha".
+    if ch in GREEK_NAMES:
+        return GREEK_NAMES[ch]
+    if ch in SYMBOL_NAMES:
+        return SYMBOL_NAMES[ch]
+    return ch
+
+
+#: lower-case Greek, by the name a physics student would say out loud.
+GREEK_NAMES: dict[str, str] = {
+    "\u03b1": "alpha", "\u03b2": "beta", "\u03b3": "gamma", "\u03b4": "delta",
+    "\u03b5": "epsilon", "\u03b8": "theta", "\u03bb": "lambda", "\u03bc": "mu",
+    "\u03bd": "nu", "\u03c0": "pi", "\u03c1": "rho", "\u03c3": "sigma",
+    "\u03c4": "tau", "\u03c6": "phi", "\u03c9": "omega", "\u03c8": "psi",
+    "\u0393": "GAMMA", "\u0394": "DELTA", "\u0398": "THETA", "\u039b": "LAMBDA",
+    "\u03a0": "PI", "\u03a3": "SIGMA", "\u03a6": "PHI", "\u03a9": "OMEGA",
+}
+
+#: Operators, by what they are for rather than by their Unicode name.
+SYMBOL_NAMES: dict[str, str] = {
+    "\u00b1": "plus-minus", "\u2213": "minus-plus", "\u00b7": "centre dot",
+    "\u00d7": "times", "\u00f7": "divide", "\u2248": "approx",
+    "\u2260": "not equal", "\u2261": "identical", "\u2264": "<= or equal",
+    "\u2265": ">= or equal", "\u221e": "infinity", "\u221d": "proportional",
+    "\u222b": "integral", "\u2211": "sum", "\u221a": "root",
+    "\u2202": "partial d", "\u2208": "element of", "\u2192": "arrow"
+}
