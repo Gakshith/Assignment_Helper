@@ -23,15 +23,21 @@ from __future__ import annotations
 LOWERCASE = list("abcdefghijklmnopqrstuvwxyz")
 UPPERCASE = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 DIGITS = list("0123456789")
-PUNCTUATION = list(".,;:!?'\"()[]-–—/&@#%*+=<>$_~")
+#: `^` is here because it appears in PLAIN PROSE ("5.21 m/s^2"), not only as markup.
+#: Braces and pipe likewise: students write them, and a hand that lacks them badges a
+#: block for a character the reader would not even notice was special.
+PUNCTUATION = list(".,;:!?'\"()[]{}|^-–—/&@#%*+=<>$_~")
 
 #: The Greek a physics problem set actually uses. Not the whole alphabet: every cell
 #: is 8-15 seconds of the student's time, and omicron is indistinguishable from o.
-GREEK_LOWER = list("αβγδεθλμνπρστφωψ")
+GREEK_LOWER = list("αβγδεζηθκλμνξπρστφωψ")
 GREEK_UPPER = list("ΓΔΘΛΠΣΦΩ")
 
 #: Operators that appear in worked solutions and that no handwriting font carries.
-MATH_SYMBOLS = list("±∓·×÷≈≠≡≤≥∞∝∫∑√∂∈→")
+#: `∘` is what KaTeX renders `^\\circ` as, so every angle in a physics problem
+#: needs it; `°` is what a student writes by hand for the same thing. `⇒` shows up
+#: in every derivation. All three were missing and all three badged real pages.
+MATH_SYMBOLS = list("±∓·×÷≈≠≡≤≥∞∝∫∑√∂∈→⇒∴⊥∘°")
 
 CHARSET: list[str] = (
     LOWERCASE + UPPERCASE + DIGITS + PUNCTUATION + GREEK_LOWER + GREEK_UPPER + MATH_SYMBOLS
@@ -79,10 +85,10 @@ def assert_charset_fits(charset: list[str] | None = None) -> None:
     from assignment_helper.glyphs.layout import CELLS_PER_PAGE
 
     chars = CHARSET if charset is None else charset
-    if len(chars) != CELLS_PER_PAGE:
+    if len(chars) > CELLS_PER_PAGE:
         raise ValueError(
-            f"The charset has {len(chars)} characters but a page holds exactly "
-            f"{CELLS_PER_PAGE}. Add or remove characters, or change the grid in "
+            f"The charset has {len(chars)} characters but a page holds only "
+            f"{CELLS_PER_PAGE}. Remove characters, or change the grid in "
             f"layout.py — do not let the slice drop them silently."
         )
     if len(set(chars)) != len(chars):
@@ -123,6 +129,7 @@ def label_for(ch: str) -> str:
 
 #: lower-case Greek, by the name a physics student would say out loud.
 GREEK_NAMES: dict[str, str] = {
+    "\u03b6": "zeta", "\u03b7": "eta", "\u03ba": "kappa", "\u03be": "xi",
     "\u03b1": "alpha", "\u03b2": "beta", "\u03b3": "gamma", "\u03b4": "delta",
     "\u03b5": "epsilon", "\u03b8": "theta", "\u03bb": "lambda", "\u03bc": "mu",
     "\u03bd": "nu", "\u03c0": "pi", "\u03c1": "rho", "\u03c3": "sigma",
@@ -138,5 +145,7 @@ SYMBOL_NAMES: dict[str, str] = {
     "\u2260": "not equal", "\u2261": "identical", "\u2264": "<= or equal",
     "\u2265": ">= or equal", "\u221e": "infinity", "\u221d": "proportional",
     "\u222b": "integral", "\u2211": "sum", "\u221a": "root",
-    "\u2202": "partial d", "\u2208": "element of", "\u2192": "arrow"
+    "\u2202": "partial d", "\u2208": "element of", "\u2192": "arrow",
+    "\u21d2": "implies =>", "\u2234": "therefore", "\u22a5": "perpendicular",
+    "\u2218": "ring (degree)", "\u00b0": "degree sign",
 }
