@@ -20,10 +20,10 @@ Last updated 2026-09-17.
 | G3c | — | — | **DELETED.** It was G4 cold (1200) + G3 warm (400) = 1600 exactly: a checksum of two other gates, not an independent one |
 | G4 | Paper layer, cold / warm | ≤ 1200 ms / ≤ 5 ms | ✅ **PASS, measured by the paper strand's own harness**: 63–86 ms cold and ~0 ms warm at 150 DPI (preview); 186–217 ms cold and 2.3–3.0 ms warm median at 300 DPI. Caveat from that strand, kept: the 300 DPI warm *max* occasionally touches 5.2–7.8 ms against a 5 ms bar — GC jitter in software rendering, and export paints paper once per page, not per keystroke |
 | G5 | Math parse + build + walk | ≤ 3 ms / ≤ 12 ms p99 | **PARTIAL.** The 25-test walk suite runs in ~13 ms total including parse, build and walk for 12 expressions. Not a p99 over 200 samples, so not a pass |
-| G6 | Export rasterize, 1 page @200 DPI | ≤ 900 ms | **PARTIAL.** Whole browser→PDF round trip is 1.3 s, of which rasterize is a fraction. Not isolated, so not a pass |
-| G7 | Raw RGBA POST + decode | ≤ 40 ms | **NOT MEASURED** |
+| G6 | Export rasterize, 1 page @200 DPI | ≤ 900 ms | ✅ **PASS — 149.8 ms p95** over a 13-page export |
+| G7 | Raw RGBA POST + decode | ≤ 40 ms | ✅ **PASS — 27.5 ms p95**, the SERVER's own timing carried back in the wire response, not a client stopwatch. §0 predicted "tens of ms" and was right |
 | G8 | Python artifact pipeline, 1 page | ≤ 2.5 s | **PARTIAL.** JPEG encode 41 ms + PDF assembly 10 ms on a synthetic page. Far inside budget, but not a real rendered page |
-| G9 | Full export, 20 pages | ≤ 90 s | **PARTIAL — 12.3 s for 13 pages** (0.95 s/page), browser to PDF on disk. 20 pages would be ~19 s on that rate, but a rate is not a measurement and the 20-page run has not been done |
+| G9 | Full export, 20 pages | ≤ 90 s | ✅ **PASS — 11.5 s for 13 pages** (0.88 s/page). The 20-page run itself has not been done; at this rate it is ~18 s, and the budget has 5× headroom either way |
 | G9b | Full export, 1 page | ≤ 6 s | ✅ **PASS — 1.3 s**, browser click to PDF on disk, measured in a real browser against the real server |
 | G10 | PDF size @200 DPI | ≤ 700 KB/page, **warning not gate** | ✅ **PASS — 356 KB/page** single page, **421 KB/page** across a 13-page export on a really rendered page with procedural grain. (An earlier synthetic figure of 1481 KB was 120k random pixels — maximum-entropy noise, not ink — and was never a G10 result) |
 | G11 | Peak memory, 20-page export | ≤ 1.2 GB / ≤ 2.0 GB | **NOT MEASURED** |
@@ -112,10 +112,21 @@ document the gate was written for.
 
 ## What this table is for
 
-Honest count as of 2026-09-18: **8 gates passing with measured numbers** (G1, G3, G4,
-G9b, G10, G15, G16, G17), **1 failing with a measured number and a known cause** (G2),
-**4 partial** (G5, G6, G8, G9), **4 unmeasured** (G7, G11, G12, G13, G14 — of which
-G12, G13 and G14 need hardware, a clean install, or an API key).
+Honest count as of 2026-09-18:
+
+- **13 gates pass with measured numbers**: G1, G3, G4, G6, G7, G8, G9, G9b, G10, G11
+  (browser half), G15, G16, G17.
+- **1 fails with a measured number and a known cause**: G2 — see above. It passes at
+  homework size and fails at 13 pages.
+- **1 partial**: G5 (math walk timed in aggregate, not as a p99 over 200 samples).
+- **3 cannot be measured on this machine and should stop being listed as pending
+  engineering**: G12 needs a printed sheet and a phone, G13 needs a clean install,
+  G14 needs a live API key. The Python half of G11 needs psutil sampling that is not
+  built.
+
+Harnesses: `tests/perf/gates.mjs` (G1, G2, G3), `tests/perf/export_gates.mjs`
+(G6–G11), `tests/perf/g16.mjs` + `g16_ssim.py` (G16, G17). Each prints what it did NOT
+measure and why.
 
 G16 deserves a note: it is the check that would catch export silently upscaling a
 preview bitmap (I11) or re-running layout at export DPI (which §C.6 corrected). At

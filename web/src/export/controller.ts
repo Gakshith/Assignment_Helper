@@ -21,7 +21,13 @@
 import type { ExportController, ExportSources, PageLayers } from '../app/contracts';
 import { mmToPx } from '../render/units';
 import { runReadbackSelfTest, type ReadbackCanvas } from './readback';
-import { PAGE_HEADERS, TOKEN_HEADER, type BeginResponse, type FinishResponse } from './wire';
+import {
+  PAGE_HEADERS,
+  TOKEN_HEADER,
+  type BeginResponse,
+  type FinishResponse,
+  type PageResponse,
+} from './wire';
 
 /** Invariant I6: per-page rasterize timeout. Abort the ENTIRE export, never resume. */
 const PAGE_TIMEOUT_MS = 20_000;
@@ -71,6 +77,21 @@ export class BrowserExportController implements ExportController {
     return this.#sources.blockedBlockIds().length === 0;
   }
 
+  /**
+   * Timings from the LAST export, for the gate harness.
+   *
+   * `receiveMs` and `artifactMs` are the SERVER'S OWN measurements, carried back in
+   * the wire responses — G7 and G8 are about what the server did, and a client-side
+   * stopwatch around a fetch would include the browser's queueing and report a number
+   * about the browser instead.
+   */
+  lastTimings: {
+    rasterMs: number[];
+    receiveMs: number[];
+    artifactMs: readonly number[];
+    pageBytes: readonly number[];
+  } = { rasterMs: [], receiveMs: [], artifactMs: [], pageBytes: [] };
+
   async exportPdf(opts: { dpi: number }): Promise<{ path: string }> {
     const sources = this.#sources;
     if (!sources) throw new Error('export: attach() was never called by the kernel');
@@ -110,6 +131,7 @@ export class BrowserExportController implements ExportController {
     const hPx = Math.round(mmToPx(first.heightMm, dpi));
 
     this.#running = true;
+    this.lastTimings = { rasterMs: [], receiveMs: [], artifactMs: [], pageBytes: [] };
     let sessionId: string | null = null;
     try {
       const begin = (await this.#post('/api/export/begin', {
@@ -125,6 +147,10 @@ export class BrowserExportController implements ExportController {
       sessionId = begin.session_id;
 
       for (const page of geometry.pages) {
+        // G6 is the rasterize alone: paint into detached canvases and composite. The
+        // POST is measured separately, because bundling them would hide which half is
+        // slow.
+        const rasterStart = performance.now();
         const layers = detachedLayers(wPx, hPx, dpi);
         sources.paper.paintPaper(layers, style);
         sources.paint.paintInk(layers, page, style, outlines);
@@ -140,13 +166,18 @@ export class BrowserExportController implements ExportController {
         ctx.drawImage(layers.ink, 0, 0);
 
         const rgba = ctx.getImageData(0, 0, wPx, hPx).data;
-        await this.#postPage(sessionId, page.pageIndex, wPx, hPx, rgba);
+        this.lastTimings.rasterMs.push(performance.now() - rasterStart);
+
+        const pageResult = await this.#postPage(sessionId, page.pageIndex, wPx, hPx, rgba);
+        if (pageResult) this.lastTimings.receiveMs.push(pageResult.receive_ms);
       }
 
       const finished = (await this.#post(
         `/api/export/finish/${sessionId}`,
         {},
       )) as FinishResponse;
+      this.lastTimings.artifactMs = finished.artifact_ms ?? [];
+      this.lastTimings.pageBytes = finished.page_bytes ?? [];
       return { path: finished.path };
     } catch (err) {
       // I6 / acceptance rows 11, 13, 14: abort the WHOLE export and let the server
@@ -188,7 +219,7 @@ export class BrowserExportController implements ExportController {
     wPx: number,
     hPx: number,
     rgba: Uint8ClampedArray,
-  ): Promise<void> {
+  ): Promise<PageResponse | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PAGE_TIMEOUT_MS);
     try {
@@ -208,6 +239,7 @@ export class BrowserExportController implements ExportController {
       if (!res.ok) {
         throw new Error(`page ${index} failed (${res.status}): ${await res.text()}`);
       }
+      return (await res.json()) as PageResponse;
     } finally {
       clearTimeout(timer);
     }

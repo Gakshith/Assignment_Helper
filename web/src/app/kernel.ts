@@ -602,6 +602,12 @@ export class Kernel {
     };
   }
 
+  /** The export controller, for anything that needs more than `exportPdf()` — the
+   * gate harness reads its per-page timings, which are the SERVER's own numbers. */
+  get exporter(): ExportController {
+    return this.subsystems.exporter;
+  }
+
   /** Which hand the document is written in. The studio labels it honestly. */
   currentProfile(): string {
     return this.store.style?.hand?.profile ?? 'reference';
