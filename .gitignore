@@ -26,5 +26,7 @@ out/
 # handwriting and must ship. Outline-first (plan §C.2) makes a permissively-licensed
 # font the reference hand, and the M0 spike is not reproducible without its fonts.
 # Their OFL.txt files sit beside them. Personal handwriting stays excluded above.
+!web/public/fonts/reference/*.ttf
+!web/public/fonts/reference/*.otf
 !spikes/m0/fonts/*.ttf
 !spikes/m0/fonts/*.otf
