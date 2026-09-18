@@ -34,12 +34,77 @@
   --accent-warn: #c97a48;
   --line: #3a3c3a;
 }
+
+/* ------------------------------------------------------------------ chrome tokens
+   The lead's palette names the DESK (--canvas-bg) and the PAGE (--paper/--ink). It
+   does not name the tool surfaces, and it cannot be reused for them: in dark mode
+   --ink is #201A14, the ink on a light page, so chrome text painted with --ink on a
+   dark desk is invisible. The chrome therefore gets its own foreground.
+
+   Every pair below was measured, not eyeballed (see the strand report):
+     light  ink on chrome 9.60 · dim 4.89 · accent 4.62 · white on warn-fill 5.36
+     dark   fg  on chrome 12.29 · dim 5.91 · accent 5.93 · ink on warn-fill 5.22
+   --accent-warn is 3.80:1 on the desk and therefore NEVER carries text there; the
+   bypass badges and the problem banner are FILLED with it instead, which measures
+   5.36 / 5.22. That is the one place the lead's 4.75:1 figure does not transfer: it
+   was measured against --paper, and the chrome is not paper. */
+:root {
+  --chrome-bg: #cfcabb;
+  --chrome-raise: #e3dfd2;
+  --chrome-fg: #1c2521;
+  --chrome-dim: #48534d;
+  --track: #a9a18c;
+  --on-accent: #ffffff;
+  --on-warn: #ffffff;
+  --page-shadow: 0 2px 24px rgb(28 37 33 / 28%);
+  --page-vignette: none;
+
+  --flyout-w: 280px;
+  --chat-open-h: 360px;
+  --page-max: 720px;
+
+  --r-sm: 3px;
+  --r-md: 5px;
+  --dur-fast: 120ms;
+  --dur-slow: 200ms;
+
+  --font-ui: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --chrome-bg: #212425;
+    --chrome-raise: #2d3132;
+    --chrome-fg: #e8e4d8;
+    --chrome-dim: #a39f93;
+    --track: #5a5f5e;
+    --on-warn: #201a14;
+    --on-accent: #201a14;
+    /* The page is lifted off the dark ground by a WARM shadow and a soft vignette at
+       its own edge. It is never dimmed: the paper stays paper. */
+    --page-shadow: 0 1px 2px rgb(0 0 0 / 55%), 0 18px 48px rgb(60 42 24 / 42%);
+    --page-vignette: inset 0 0 26px rgb(90 74 52 / 14%);
+  }
+}
+:root[data-theme='dark'] {
+  --chrome-bg: #212425;
+  --chrome-raise: #2d3132;
+  --chrome-fg: #e8e4d8;
+  --chrome-dim: #a39f93;
+  --track: #5a5f5e;
+  --on-warn: #201a14;
+  --on-accent: #201a14;
+  --page-shadow: 0 1px 2px rgb(0 0 0 / 55%), 0 18px 48px rgb(60 42 24 / 42%);
+  --page-vignette: inset 0 0 26px rgb(90 74 52 / 14%);
+}
+
 * { box-sizing: border-box; }
 body {
   margin: 0;
   background: var(--canvas-bg);
   color: var(--ink);
-  font: 14px/1.5 'Public Sans', system-ui, sans-serif;
+  font: 14px/1.5 var(--font-ui);
 }
 #shell { display: grid; grid-template-columns: var(--rail-w) 1fr var(--panel-w); min-height: 100vh; }
 #pages { display: flex; flex-direction: column; align-items: center; gap: 24px; padding: 24px 16px; }
@@ -47,12 +112,488 @@ body {
   position: relative;
   /* Page corner radius is 0. A rounded page reads as a sticker. */
   border-radius: 0;
-  box-shadow: 0 2px 24px rgb(28 37 33 / 28%);
+  box-shadow: var(--page-shadow);
   background: var(--paper);
 }
 .page-layer { position: absolute; inset: 0; display: block; }
 .page-layer--paper { position: relative; }
 
+/* ================================================================== app frame */
+
+html, body { height: 100%; }
+body {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  /* The implicit column must be minmax(0, 1fr), not auto. An auto column sizes to
+     the MAX-CONTENT of its rows, so one wide <option> string in the style panel
+     stretched the whole frame past the viewport and produced a horizontal scroll at
+     phone width. Every descendant that must be allowed to shrink repeats min-width:0. */
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 100vh;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The lead's rules above size #shell for a standalone page. Inside the frame it is
+   one grid row and must be allowed to shrink, or the dock is pushed off-screen. */
+#shell { min-height: 0; min-width: 0; overflow: hidden; }
+.dock { min-width: 0; }
+/* min-width too, not just min-height: a grid item defaults to min-width:auto and
+   will not shrink below its content, and a <select> holding "US Letter - 215.9 x
+   279.4 mm" is 57px wider than a 400px phone. That is where the horizontal scroll
+   came from. */
+#pages, #right-panel { min-height: 0; min-width: 0; }
+
+/* One focus treatment, everywhere, and it is never removed. Accent measures 4.62:1
+   (light) / 5.93:1 (dark) against the chrome, well past the 3:1 non-text floor. */
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+.u-mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+.u-dim { color: var(--chrome-dim); }
+.u-sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* ------------------------------------------------------------------- top bar */
+
+#top-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--top-bar-h);
+  min-height: var(--top-bar-h);
+  padding: 0 12px;
+  background: var(--chrome-bg);
+  color: var(--chrome-fg);
+  /* The boundary is carried by the tonal shift from --chrome-bg to --canvas-bg.
+     --line is a decorative hairline on top of it and carries nothing on its own. */
+  border-bottom: 1px solid var(--line);
+  position: relative;
+  z-index: 40;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; min-width: 0; overflow: hidden; }
+.brand__mark {
+  font-weight: 600; font-size: 13px; letter-spacing: 0.06em;
+  text-transform: uppercase; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.brand__doc {
+  font-family: var(--font-mono); font-size: 12px; color: var(--chrome-dim);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.top-bar__spacer { flex: 1 1 auto; min-width: 8px; }
+.top-bar__tools { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 32px; padding: 0 10px;
+  font: inherit; font-size: 13px; color: var(--chrome-fg);
+  background: transparent; border: 1px solid transparent; border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
+}
+.btn:hover:not(:disabled) { background: var(--chrome-raise); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn--outline { border-color: var(--track); }
+.btn__icon { width: 16px; height: 16px; flex: 0 0 auto; }
+.btn__icon path, .btn__icon circle, .btn__icon rect, .btn__icon line, .btn__icon polyline {
+  stroke: currentColor; stroke-width: 1.6; fill: none;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* --------------------------------------------------------------- bypass badges
+   Invariant I15: every active bypass is badged and a dev build is badged
+   permanently, so you can never be unknowingly in one. Filled, not outlined —
+   --accent-warn is 3.80:1 as text on the chrome and fails AA. */
+#bypass-badges { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 8px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.02em; white-space: nowrap;
+  background: var(--accent-warn); color: var(--on-warn);
+  border-radius: 11px;
+}
+.badge::before {
+  content: ''; width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor; flex: 0 0 auto;
+}
+.badge--dev { background: var(--accent); color: var(--on-accent); }
+
+/* --------------------------------------------------------------- app banner
+   Invariant I5: an app-scope problem cannot be missed. Full width, under the top
+   bar, above everything, and it does not scroll away with the page. */
+#app-banner { display: none; }
+#app-banner[data-count]:not([data-count='0']) { display: block; }
+.banner {
+  background: var(--accent-warn);
+  color: var(--on-warn);
+  border-bottom: 1px solid var(--line);
+}
+.banner__row {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 8px 14px;
+}
+.banner__row + .banner__row { border-top: 1px solid rgb(0 0 0 / 18%); }
+.banner__icon { width: 16px; height: 16px; margin-top: 2px; flex: 0 0 auto; }
+.banner__icon path, .banner__icon circle, .banner__icon line {
+  stroke: currentColor; stroke-width: 1.7; fill: none; stroke-linecap: round;
+}
+.banner__body { min-width: 0; flex: 1 1 auto; }
+.banner__msg { font-size: 13px; font-weight: 500; }
+.banner__meta {
+  font-family: var(--font-mono); font-size: 11px; margin-top: 2px;
+  overflow-wrap: anywhere; opacity: 0.88;
+}
+
+/* ------------------------------------------------------------------ icon rail
+   64px in the grid. The flyout OVERLAYS at 280px and never reflows the page —
+   an expanding column would shove the document sideways every time the pointer
+   crossed it. */
+#rail {
+  position: relative;
+  width: var(--rail-w);
+  background: var(--chrome-bg);
+  /* Every chrome surface states its OWN foreground. Inheriting from body means
+     inheriting --ink, which in dark mode is #201A14, the ink for a light page: it
+     measures 1.1:1 on the dark chrome and vanishes. This bit the dock first. */
+  color: var(--chrome-fg);
+  border-right: 1px solid var(--line);
+  z-index: 30;
+}
+.rail__inner {
+  position: absolute; inset: 0 auto 0 0;
+  width: var(--rail-w);
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 10px 0;
+  background: var(--chrome-bg);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+  transition: width var(--dur-slow) ease, box-shadow var(--dur-slow) ease;
+}
+#rail:hover .rail__inner,
+#rail:focus-within .rail__inner,
+#rail[data-pinned='true'] .rail__inner {
+  width: var(--flyout-w);
+  box-shadow: 6px 0 24px rgb(0 0 0 / 22%);
+}
+.rail__item {
+  display: flex; align-items: center; gap: 14px;
+  width: var(--flyout-w);
+  min-height: 44px; /* 44px touch target */
+  padding: 0 22px;
+  border: 0; border-left: 3px solid transparent;
+  background: transparent; color: var(--chrome-fg);
+  font: inherit; font-size: 13px; text-align: left;
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-fast) ease;
+}
+.rail__item:hover { background: var(--chrome-raise); }
+.rail__item[aria-current='true'] { border-left-color: var(--accent); background: var(--chrome-raise); }
+.rail__icon { width: 20px; height: 20px; flex: 0 0 auto; }
+.rail__icon path, .rail__icon circle, .rail__icon rect, .rail__icon line, .rail__icon polyline {
+  stroke: currentColor; stroke-width: 1.5; fill: none;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+/* The label is always in the DOM and always occupies its box; only opacity moves.
+   Inserting it on hover would reflow the row under the pointer. */
+.rail__label { opacity: 0; transition: opacity var(--dur-fast) ease; }
+#rail:hover .rail__label,
+#rail:focus-within .rail__label,
+#rail[data-pinned='true'] .rail__label { opacity: 1; }
+.rail__spacer { flex: 1 1 auto; }
+
+/* ------------------------------------------------------------------ page area */
+
+#pages {
+  overflow: auto;
+  background: var(--canvas-bg);
+  /* Real margins, not a hairline gutter. */
+  padding: 40px 32px 64px;
+  gap: 32px;
+}
+#pages .page {
+  /* The vignette is on the PAGE EDGE. It darkens nothing in the middle. */
+  box-shadow: var(--page-shadow), var(--page-vignette);
+  /* zoom, not transform: scale() -- zoom affects layout, so the scroll height stays
+     honest and page 2 does not slide under page 1. The factor is measured in
+     shell/chrome.ts and written to this variable. */
+  zoom: var(--page-zoom, 1);
+}
+#pages:empty::after {
+  content: 'No page yet. The paint, paper and glyph strands have not landed.';
+  display: block;
+  max-width: 44ch;
+  margin: 18vh auto 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+  color: var(--chrome-dim);
+}
+
+/* ---------------------------------------------------------------- right panel
+   320px, and it is the PERMANENT home of the neatness dial. Not a drawer, not a
+   popover: the one control the product is about does not hide. */
+#right-panel {
+  width: var(--panel-w);
+  background: var(--chrome-bg);
+  color: var(--chrome-fg);
+  border-left: 1px solid var(--line);
+  overflow: auto;
+  z-index: 20;
+}
+
+/* ------------------------------------------------------------------ chat dock
+   Bottom-docked at 44px, expanding to 360px. Never a permanent third column. */
+.dock {
+  display: grid;
+  grid-template-rows: var(--chat-h) 0fr;
+  background: var(--chrome-bg);
+  color: var(--chrome-fg);
+  border-top: 1px solid var(--line);
+  transition: grid-template-rows var(--dur-slow) ease;
+  z-index: 35;
+}
+.dock[data-open='true'] { grid-template-rows: var(--chat-h) var(--chat-open-h); }
+.dock__bar {
+  display: flex; align-items: center; gap: 10px;
+  height: var(--chat-h); padding: 0 12px;
+}
+.dock__title { font-size: 13px; font-weight: 500; }
+.dock__hint { font-family: var(--font-mono); font-size: 11px; color: var(--chrome-dim); }
+.dock__spacer { flex: 1 1 auto; }
+.dock__chevron { transition: transform var(--dur-slow) ease; }
+.dock[data-open='true'] .dock__chevron { transform: rotate(180deg); }
+#chat-dock {
+  overflow: auto;
+  min-height: 0;
+  padding: 0 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--chrome-dim);
+}
+.dock[data-open='true'] #chat-dock { padding: 0 14px 14px; }
+
+/* ================================================================ style panel */
+
+.panel__scroll { padding: 0 0 28px; }
+.sect { padding: 16px 18px; }
+.sect + .sect { border-top: 1px solid var(--line); }
+.sect__head {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 0 0 12px;
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--chrome-dim);
+}
+.sect--hero { padding-top: 18px; }
+
+/* ---- the neatness dial: the centrepiece -------------------------------------
+   The UI moves at 60fps ALWAYS. The render behind it debounces 80-120 ms. The
+   thumb is written straight from pointermove with no rAF gate and no await, so it
+   never stutters to match render lag. */
+.dial__label {
+  display: block;
+  font-size: 15px; font-weight: 600;
+  margin-bottom: 2px;
+}
+.dial__reading {
+  font-size: 13px; color: var(--chrome-dim);
+  margin-bottom: 14px;
+}
+.dial__reading b { color: var(--chrome-fg); font-weight: 600; }
+
+.dial {
+  position: relative;
+  height: 36px;
+  margin: 0 12px 6px;
+  cursor: grab;
+  touch-action: none;
+}
+.dial:active { cursor: grabbing; }
+.dial__track {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 4px; margin-top: -2px;
+  background: var(--track);
+  border-radius: 2px;
+}
+.dial__tick {
+  position: absolute; top: 50%; width: 1px; height: 12px; margin-top: -6px;
+  background: var(--track);
+}
+/* The slide-rule cursor. Core / ring / hairline, so every adjacency clears 3:1
+   whatever it is sitting on: core-vs-ring 9.60 (light) 12.29 (dark), and the
+   hairline clears the track at 6.11 / 5.11. */
+.dial__thumb {
+  position: absolute; top: 50%; left: 0;
+  width: 24px; height: 24px; margin: -12px 0 0 0;
+  border-radius: 50%;
+  background: var(--chrome-fg);
+  box-shadow: 0 0 0 3px var(--chrome-bg), 0 0 0 4px var(--chrome-fg);
+  will-change: transform;
+}
+.dial:focus-visible { outline: none; }
+.dial:focus-visible .dial__thumb {
+  box-shadow: 0 0 0 3px var(--chrome-bg), 0 0 0 4px var(--chrome-fg),
+    0 0 0 7px var(--accent);
+}
+.dial__poles {
+  display: flex; justify-content: space-between; gap: 12px;
+  margin: 0 2px;
+  font-size: 11px; color: var(--chrome-dim);
+}
+.dial__poles span:last-child { text-align: right; }
+
+/* ---- advanced disclosure: reduced weight, on purpose ---------------------- */
+.adv { margin-top: 18px; }
+.adv > summary {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 32px;
+  font-size: 12px; color: var(--chrome-dim);
+  cursor: pointer; list-style: none;
+}
+.adv > summary::-webkit-details-marker { display: none; }
+.adv__chevron { width: 12px; height: 12px; transition: transform var(--dur-fast) ease; }
+.adv__chevron path { stroke: currentColor; stroke-width: 2; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.adv[open] .adv__chevron { transform: rotate(90deg); }
+.adv__note {
+  margin: 4px 0 12px;
+  font-size: 11px; line-height: 1.6; color: var(--chrome-dim);
+}
+.adv__list { display: flex; flex-direction: column; gap: 14px; }
+
+.knob__head { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.knob__name { font-size: 12px; }
+/* The detach dot. Visible, and it says what it means to a screen reader too. */
+.knob__dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); flex: 0 0 auto;
+  visibility: hidden;
+}
+.knob[data-detached='true'] .knob__dot { visibility: visible; }
+.knob[data-detached='true'] .knob__name { color: var(--chrome-fg); font-weight: 500; }
+.knob__spacer { flex: 1 1 auto; }
+.knob__value { font-family: var(--font-mono); font-size: 11px; color: var(--chrome-dim); }
+.knob__reattach {
+  border: 0; background: transparent; padding: 2px 4px; min-height: 24px;
+  font: inherit; font-size: 11px; color: var(--accent);
+  cursor: pointer; text-decoration: underline;
+  visibility: hidden;
+}
+.knob[data-detached='true'] .knob__reattach { visibility: visible; }
+
+/* ---- plain rows ------------------------------------------------------------ */
+.row { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.row__label { font-size: 12px; color: var(--chrome-fg); }
+.row__aside { font-family: var(--font-mono); font-size: 11px; color: var(--chrome-dim); }
+.row__head { display: flex; align-items: baseline; gap: 8px; }
+.row__head .row__label { flex: 1 1 auto; }
+
+.seg { display: flex; gap: 0; }
+.seg__btn {
+  flex: 1 1 0; min-height: 34px; padding: 0 6px;
+  font: inherit; font-size: 12px; color: var(--chrome-fg);
+  background: transparent;
+  border: 1px solid var(--track);
+  cursor: pointer;
+  transition: background var(--dur-fast) ease;
+}
+.seg__btn + .seg__btn { border-left-width: 0; }
+.seg__btn:first-child { border-radius: var(--r-md) 0 0 var(--r-md); }
+.seg__btn:last-child { border-radius: 0 var(--r-md) var(--r-md) 0; }
+.seg__btn:hover:not(:disabled) { background: var(--chrome-raise); }
+.seg__btn[aria-pressed='true'] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.seg__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+select.ctl, input.ctl {
+  width: 100%; max-width: 100%;
+  min-height: 34px; padding: 0 8px;
+  font: inherit; font-size: 13px;
+  color: var(--chrome-fg); background: var(--chrome-raise);
+  border: 1px solid var(--track); border-radius: var(--r-md);
+}
+input.ctl[type='color'] { padding: 3px; width: 56px; flex: 0 0 56px; height: 34px; cursor: pointer; }
+.ctl-pair { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ctl-pair .row__aside { overflow: hidden; text-overflow: ellipsis; }
+.ctl-pair .row__aside { flex: 1 1 auto; }
+
+input[type='range'].slider {
+  width: 100%; height: 30px; margin: 0;
+  background: transparent; cursor: pointer;
+  -webkit-appearance: none; appearance: none;
+}
+input[type='range'].slider::-webkit-slider-runnable-track {
+  height: 3px; background: var(--track); border-radius: 2px;
+}
+input[type='range'].slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; margin-top: -7.5px; border-radius: 50%;
+  background: var(--chrome-fg);
+  box-shadow: 0 0 0 2px var(--chrome-bg), 0 0 0 3px var(--chrome-fg);
+}
+input[type='range'].slider:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* ---- the panel's own status line ------------------------------------------ */
+.panel__status {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: 0 18px 4px; padding: 10px 12px;
+  border: 1px solid var(--track); border-radius: var(--r-md);
+  font-size: 12px; line-height: 1.5;
+}
+.panel__status[data-tone='warn'] { background: var(--accent-warn); color: var(--on-warn); border-color: var(--accent-warn); }
+.panel__status[hidden] { display: none; }
+.panel__status code { font-family: var(--font-mono); font-size: 11px; overflow-wrap: anywhere; }
+
+/* ================================================================== responsive
+   400px: the rail collapses to a bottom-anchored strip, the right panel becomes a
+   full-width sheet under the page, and nothing scrolls horizontally. */
+@media (max-width: 900px) {
+  body { overflow: auto; }
+  #shell { grid-template-columns: var(--rail-w) 1fr; grid-template-areas: 'rail pages' 'panel panel'; }
+  #rail { grid-area: rail; }
+  #pages { grid-area: pages; }
+  #right-panel {
+    grid-area: panel; width: 100%;
+    border-left: 0; border-top: 1px solid var(--line);
+  }
+  #pages { padding: 24px 16px 40px; }
+}
+@media (max-width: 560px) {
+  :root { --rail-w: 52px; --flyout-w: 232px; }
+  #shell { grid-template-columns: var(--rail-w) 1fr; }
+  /* The bypass badges get their own full-width row rather than being squeezed or
+     clipped. I15 does not get quieter on a narrow window. */
+  #top-bar {
+    height: auto; flex-wrap: wrap; row-gap: 6px; padding: 8px 10px; gap: 8px;
+  }
+  .brand { flex: 1 1 auto; }
+  #bypass-badges { order: 5; flex: 1 0 100%; flex-wrap: wrap; }
+  .top-bar__spacer { display: none; }
+  .brand__doc { display: none; }
+  .dock__hint { display: none; }
+  .dock__title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #pages { padding: 16px 12px 32px; }
+  .sect { padding: 14px 16px; }
+  .panel__status { margin: 0 16px 4px; }
+  .dial { margin: 0 12px 6px; }
+  #bypass-badges { gap: 4px; }
+  .badge { padding: 0 6px; }
+}
+
+/* Respect the user's motion preference. Every transition here is decorative. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
 /* ---------------------------------------------------------------- lasso */
 .lasso-box {
   position: fixed;
