@@ -85,6 +85,39 @@ const measured = await page.evaluate(async () => {
   }
   out.G1 = g1;
 
+  /**
+   * G2 — an edit that REFLOWS. Distinct from G1 because it invalidates geometry: the
+   * whole document is laid out again, then repainted. Driven through the real editor
+   * verb rather than by poking the scheduler, so it measures the path a keystroke
+   * actually takes, server round trip included.
+   */
+  const g2 = [];
+  const g2e2e = [];
+  const target = geom?.pages?.[0]?.blocks?.find((b) => b.kind === 'prose')?.blockId ?? null;
+  out.reflowBlock = target;
+  if (target && k.actions) {
+    const original = k.actions.blockText(target);
+    for (let i = 0; i < 12; i++) {
+      // Length changes on every iteration, so the text genuinely reflows rather than
+      // replacing a string with one the same width.
+      const text = `${original} ${'reflow '.repeat(i + 1)}`;
+      const t0 = performance.now();
+      await k.actions.editBlock(target, text);
+      await frame();
+      await frame();
+      // G2 as the plan defines it: "from delta-applied to dirty-rect repaint complete".
+      // The scheduler's own flush time is exactly that. The wall clock around
+      // editBlock() also contains an HTTP round trip to the local server, which is
+      // real latency the user feels but is NOT what this gate measures — reporting it
+      // as G2 would be the same mistake as timing G1 across two vsyncs.
+      g2.push(k.scheduler.lastFlushMs);
+      g2e2e.push(performance.now() - t0);
+    }
+    if (original !== null) await k.actions.editBlock(target, original);
+  }
+  out.G2 = g2;
+  out.G2e2e = g2e2e;
+
   out.pages = geom?.pages?.length ?? 0;
   out.blocks = (geom?.pages ?? []).reduce((n, p) => n + p.blocks.length, 0);
   return out;
@@ -109,10 +142,17 @@ function report(id, samples) {
   return verdict;
 }
 
-const verdicts = [report('G3', measured.G3), report('G1', measured.G1)];
+const verdicts = [report('G3', measured.G3), report('G1', measured.G1), report('G2', measured.G2)];
+
+if (measured.G2e2e?.length) {
+  const e2e = p95(measured.G2e2e);
+  console.log(
+    `\n     end-to-end for the same edit (includes the local HTTP round trip): ` +
+      `${e2e.toFixed(1)} ms p95. Not G2 — recorded because it is what the user feels.`,
+  );
+}
 
 console.log('\nNOT MEASURED BY THIS SCRIPT, and why:');
-console.log('  G2   needs a text edit that reflows — drive actions.editBlock with a longer string');
 console.log('  G4   paper cold/warm is internal to the paper engine; it has its own harness');
 console.log('  G11  needs a browser memory sample during a 20-page export');
 console.log('  G16  needs two renders at different DPI and an SSIM comparison of the INK MASK only');

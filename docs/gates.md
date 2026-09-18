@@ -14,11 +14,11 @@ Last updated 2026-09-17.
 
 | # | Gate | Budget | Status |
 |---|---|---|---|
-| G1 | Single-block re-render, no reflow | ≤ 40 ms p95 | ✅ **PASS — 18.3 ms p95** over 60 samples on a 13-page, 445-block document |
-| G2 | Single-block edit that reflows | ≤ 120 ms p95 | **NOT MEASURED.** Needs an edit that reflows; `tests/perf/gates.mjs` says so rather than reporting G1's number twice |
+| G1 | Single-block re-render, no reflow | ≤ 40 ms p95 | ✅ **PASS — 18.8 ms p95** over 60 samples on a 13-page, 445-block document |
+| G2 | Single-block edit that reflows | ≤ 120 ms p95 | ⚠️ **PASSES at homework size, HARD FAILS at scale.** 25.8 ms p95 on 1 page / 16 blocks; **252 ms on 13 pages / 445 blocks** against a 250 ms hard-fail line. See below |
 | G3 | Full-page first render, warm paper | ≤ 400 ms p95 | ✅ **PASS — 38.4 ms p95**, same document, 30 samples |
 | G3c | — | — | **DELETED.** It was G4 cold (1200) + G3 warm (400) = 1600 exactly: a checksum of two other gates, not an independent one |
-| G4 | Paper layer, cold / warm | ≤ 1200 ms / ≤ 5 ms | **NOT MEASURED** — paper engine in flight |
+| G4 | Paper layer, cold / warm | ≤ 1200 ms / ≤ 5 ms | ✅ **PASS, measured by the paper strand's own harness**: 63–86 ms cold and ~0 ms warm at 150 DPI (preview); 186–217 ms cold and 2.3–3.0 ms warm median at 300 DPI. Caveat from that strand, kept: the 300 DPI warm *max* occasionally touches 5.2–7.8 ms against a 5 ms bar — GC jitter in software rendering, and export paints paper once per page, not per keystroke |
 | G5 | Math parse + build + walk | ≤ 3 ms / ≤ 12 ms p99 | **PARTIAL.** The 25-test walk suite runs in ~13 ms total including parse, build and walk for 12 expressions. Not a p99 over 200 samples, so not a pass |
 | G6 | Export rasterize, 1 page @200 DPI | ≤ 900 ms | **PARTIAL.** Whole browser→PDF round trip is 1.3 s, of which rasterize is a fraction. Not isolated, so not a pass |
 | G7 | Raw RGBA POST + decode | ≤ 40 ms | **NOT MEASURED** |
@@ -57,6 +57,31 @@ Last updated 2026-09-17.
 | I16 | No route reachable without the session token | ✅ All four defences tested: no token 403, bad token 403, rebound `Host` 403, cross-site POST 403. Token absent from `repr` and from every response body. Verified live that it is stripped from the URL into `sessionStorage` |
 | I17 | CV stack never imported at module scope | ✅ **Enforced** — import-linter, 69 files, 172 dependencies, 2 contracts kept |
 
+## G2: the one gate that genuinely fails, and exactly when
+
+**A reflowing edit re-lays-out the WHOLE document.** There is no incremental layout
+path, so the cost is O(blocks) regardless of how few of them moved:
+
+| document | G2 p95 (layout + paint) | end-to-end incl. local HTTP |
+|---|---|---|
+| 1 page, 16 blocks | **25.8 ms** ✅ | 50 ms |
+| 13 pages, 445 blocks | **252 ms** ❌ (hard fail at 250) | 592 ms |
+
+The crossover is somewhere around four to six pages. **Homework is one to three
+pages**, which is what this product is for, so the gate passes for its actual workload
+and the failure is a scaling limit rather than a daily one. It is recorded as a failure
+anyway, because "passes on the documents we tried" is how a limit becomes a surprise.
+
+Fixing it properly means incremental relayout — reusing the geometry of blocks whose
+line assignment cannot have changed. That is real work and it is not in the plan. The
+cheap mitigations, in the order they should be tried: debounce the edit before
+relayout, and lay out only from the edited block forward, since nothing above it can
+move.
+
+Note the end-to-end column. A keystroke costs roughly twice the render, because every
+edit is a round trip to the local server — which is the price of the server being
+authoritative (I4), and worth knowing before anyone proposes live-typing into a block.
+
 ## How G1 was nearly reported as passing while being broken
 
 Worth recording, because the failure was invisible in every other signal.
@@ -87,8 +112,9 @@ document the gate was written for.
 
 ## What this table is for
 
-Honest count as of 2026-09-18: **5 gates passing with measured numbers** (G1, G3, G9b,
-G10, G15), **4 partial** (G5, G6, G8, G9), **8 unmeasured**.
+Honest count as of 2026-09-18: **6 gates passing with measured numbers** (G1, G3, G4,
+G9b, G10, G15), **1 failing with a measured number and a known cause** (G2), **4
+partial** (G5, G6, G8, G9), **6 unmeasured**.
 
 What the remaining unmeasured ones need is no longer a missing subsystem — the pipeline
 is closed end to end — it is a **harness**: G1/G2/G3 want p95 over 200 instrumented
