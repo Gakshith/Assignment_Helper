@@ -30,6 +30,7 @@
  * plausible, and is spaced wrong.
  */
 
+import FONT_METRICS from 'katex/src/fontMetricsData.js';
 import type { GlyphMetricsProvider, GlyphPlacement } from '../geometry';
 import type { Mm } from '../units';
 
@@ -253,19 +254,41 @@ export function applyHandMetrics(
 ): number {
   let applied = 0;
   for (const family of families) {
+    /**
+     * MERGE, never replace.
+     *
+     * `__setFontMetrics` swaps the WHOLE table for a family. Handing it a table of just
+     * the ASCII range deletes everything else — and Main-Regular alone carries 182
+     * codepoints above 0x7E: the radical, the big operators, the stretchy delimiters.
+     * The symptom is `Unsupported symbol \surd and font size Main-Regular` on any
+     * expression with a square root in it, which is most of a physics problem set.
+     *
+     * It got past the twelve-expression oracle because the oracle runs BEFORE the
+     * metrics are applied — file order, not coverage. A test that only asserts the
+     * layout MOVED cannot notice that it also broke.
+     */
+    const base = FONT_METRICS[family];
+    if (!base) continue;
+
     const table: Record<number, number[]> = {};
+    for (const [cp, row] of Object.entries(base)) table[Number(cp)] = row as number[];
+
+    let overridden = 0;
     for (let cp = 0x20; cp < 0x7f; cp++) {
       const ch = String.fromCodePoint(cp);
       if (!metrics.has(ch)) continue;
       const height = metrics.ascentMm(ch, 1);
       const depth = metrics.descentMm(ch, 1);
       const width = metrics.advanceMm(ch, 1);
-      // italic and skew are TeX font-design quantities with no meaning for a
-      // photographed glyph; outline-first deletes the research item by making them 0
-      // rather than by inventing a derivation nobody could defend.
+      if (!Number.isFinite(height) || !Number.isFinite(width) || width <= 0) continue;
+      // italic and skew stay 0: they are TeX font-design quantities with no defensible
+      // meaning for a photographed glyph, and §C.2 lists that as a research item
+      // outline-first deletes rather than answers.
       table[cp] = [depth, height, 0, 0, width];
+      overridden++;
     }
-    if (Object.keys(table).length === 0) continue;
+
+    if (overridden === 0) continue;
     katex.__setFontMetrics(family, table);
     applied++;
   }

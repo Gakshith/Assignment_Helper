@@ -465,9 +465,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     store, loader, seam_bypasses = build_store(path)
     from assignment_helper.llm.client import LLMClient
     from assignment_helper.llm.keys import resolve_key
+    from assignment_helper.llm.local_cli import LocalClaudeClient, describe_choice, find_claude
 
+    # Transport choice, in one place. An API key wins when present because it streams
+    # and can carry images; otherwise the `claude` CLI already installed and signed in
+    # on this machine does the job without asking for a second credential.
     key = resolve_key(use_keyring=not args.no_keyring)
-    llm_client = LLMClient(key.key, offline=args.offline)
+    cli_path = find_claude()
+    if key.key:
+        llm_client = LLMClient(key.key, offline=args.offline)
+    else:
+        llm_client = LocalClaudeClient(offline=args.offline)
+    print(f"  ai         {describe_choice(bool(key.key), cli_path)}", flush=True)
     attach(app, store, path, loader, llm_client)
 
     print(

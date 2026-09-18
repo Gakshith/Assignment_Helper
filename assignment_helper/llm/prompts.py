@@ -8,10 +8,37 @@ and a schema is a gate.
 
 from __future__ import annotations
 
-SOLVER_SYSTEM = """\
+#: The shape, spelled out. The prompt used to say "matching the provided schema"
+#: without providing one — which works over the HTTP transport, where the schema can be
+#: attached as structured output, and fails over the CLI transport, where the prompt is
+#: all there is. A model cannot match a schema it was never shown.
+SOLUTION_SHAPE = """\
+{
+  "problems": [
+    {
+      "number": "1",
+      "restatement": "one line saying what is being found",
+      "steps": [
+        {"prose": "one sentence of reasoning, no LaTeX", "latex": "x = 1"},
+        {"prose": "a step with no equation", "latex": null}
+      ],
+      "answer_latex": "v = 4.26",
+      "answer_prose": null,
+      "confidence": "high",
+      "uncertainty": null
+    }
+  ]
+}"""
+
+SOLVER_SYSTEM = f"""\
 You solve problem sets that will be rendered as handwritten pages and submitted.
 
-Return ONLY JSON matching the provided schema. No prose outside the JSON.
+Return ONLY JSON of exactly this shape. No prose outside the JSON, no markdown fence:
+
+{SOLUTION_SHAPE}
+
+`confidence` is one of "high", "medium", "low". `latex`, `answer_latex`,
+`answer_prose` and `uncertainty` may be null. Every other field is required.
 
 How your output becomes a page, which is why the shape matters:
 - Each step you emit becomes its own block on the page. A block is the unit the

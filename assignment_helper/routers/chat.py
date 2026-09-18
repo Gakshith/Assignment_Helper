@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
-from assignment_helper.llm.client import LLMClient, LLMProblem
+from assignment_helper.llm.client import LLMProblem
 from assignment_helper.llm.payload import ChatPayload
 from assignment_helper.llm.prompts import CHAT_SYSTEM, SOLVER_SYSTEM, solve_user_message
 from assignment_helper.llm.schemas import SolutionSet
@@ -27,20 +27,20 @@ IMPLEMENTED = True
 _CLIENT_KEY = "llm_client"
 
 
-def set_llm_client(app, client: LLMClient) -> None:
+def set_llm_client(app, client) -> None:
     """Called by cli.py at startup. Declared here so the caller is never in doubt —
     an earlier wave lost a whole subsystem because a registrar was written by one
     strand and called by neither."""
     setattr(app.state, _CLIENT_KEY, client)
 
 
-def get_llm_client(app) -> LLMClient | None:
+def get_llm_client(app):
     """The one place the client lives. Other routers ask HERE rather than keeping a
     second reference that can drift out of step with --offline or a revoked key."""
     return getattr(app.state, _CLIENT_KEY, None)
 
 
-def _client(request: Request) -> LLMClient:
+def _client(request: Request):
     client = getattr(request.app.state, _CLIENT_KEY, None)
     if client is None:
         raise HTTPException(
@@ -149,7 +149,7 @@ async def solve_document(request: Request) -> SolveDocumentResponse:
     return SolveDocumentResponse(source_chars=len(source), **result)
 
 
-async def _solve_source(client: LLMClient, source: str) -> dict[str, Any]:
+async def _solve_source(client, source: str) -> dict[str, Any]:
     chunks: list[str] = []
     try:
         for ev in client.stream(
