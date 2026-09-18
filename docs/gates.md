@@ -32,8 +32,8 @@ Last updated 2026-09-17.
 | G13b | First launch after install | ≤ 5.0 s | **ENFORCED, not timed.** I17's import-linter contract proves `cv2`/`skimage`/`numpy` are unreachable from the serve path, which is the mechanism the gate depends on |
 | G14 | Chat: send → first anything | ≤ 2.5 s p95 | **NOT MEASURED** — needs a live API key |
 | G15 | Lasso hit-test, 20-page doc | ≤ 2 ms per pointermove | ✅ **PASS — 0.09 µs** per hit-test, 9.6 µs per full-page rect-select, over a real 20-page 800-block document. 20,000× headroom. The plan predicted ~0.05 ms for a spatial index and warned that anything near 16 ms meant a linear scan was hiding behind the gate |
-| G16 | Preview↔export parity | SSIM ≥ 0.97, **ink mask only** | **NOT MEASURED** — needs both render paths |
-| G17 | Re-render determinism | SSIM ≥ 0.999 | **NOT MEASURED** at the pixel level. Geometry determinism (I1) *is* tested |
+| G16 | Preview↔export parity | SSIM ≥ 0.97, **ink mask only** | ✅ **PASS — SSIM 0.9995.** Ink painted at 150 DPI vs 300 DPI Lanczos-downsampled to 150; coverage 1.08% vs 1.13%. Kernel stated because it alone moves SSIM 0.02–0.05. `tests/perf/g16.mjs` + `g16_ssim.py` |
+| G17 | Re-render determinism | SSIM ≥ 0.999 | ✅ **PASS — SSIM 1.000000**, pixel-identical across two paints of the same geometry in one session. Better than the invariant requires, because seeded geometry plus deterministic paint leaves nothing to vary |
 
 ## Invariants
 
@@ -112,9 +112,15 @@ document the gate was written for.
 
 ## What this table is for
 
-Honest count as of 2026-09-18: **6 gates passing with measured numbers** (G1, G3, G4,
-G9b, G10, G15), **1 failing with a measured number and a known cause** (G2), **4
-partial** (G5, G6, G8, G9), **6 unmeasured**.
+Honest count as of 2026-09-18: **8 gates passing with measured numbers** (G1, G3, G4,
+G9b, G10, G15, G16, G17), **1 failing with a measured number and a known cause** (G2),
+**4 partial** (G5, G6, G8, G9), **4 unmeasured** (G7, G11, G12, G13, G14 — of which
+G12, G13 and G14 need hardware, a clean install, or an API key).
+
+G16 deserves a note: it is the check that would catch export silently upscaling a
+preview bitmap (I11) or re-running layout at export DPI (which §C.6 corrected). At
+0.9995 it says the architecture does what it claims — geometry computed once at no DPI,
+re-PAINTED at each resolution.
 
 What the remaining unmeasured ones need is no longer a missing subsystem — the pipeline
 is closed end to end — it is a **harness**: G1/G2/G3 want p95 over 200 instrumented

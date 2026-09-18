@@ -21,6 +21,7 @@ import { KernelActions } from './actions';
 import type {
   ChatPanel,
   EditorActions,
+  ExportSources,
   SelectionCrop,
   Delta,
   Document,
@@ -318,6 +319,9 @@ export class Kernel {
    */
   readonly actions: EditorActions;
 
+  /** What export paints from. Populated by start(); see the note at the assignment. */
+  sources: ExportSources | null = null;
+
   #geometry: DocumentGeometry | null = null;
   /**
    * The document version and style the cached geometry was computed FOR.
@@ -386,7 +390,12 @@ export class Kernel {
       }),
     );
 
-    this.subsystems.exporter.attach({
+    /**
+     * The same bundle export uses, kept so anything else that needs to paint geometry
+     * at a chosen DPI asks for it here rather than reaching into #private state.
+     * `tests/perf/g16.mjs` uses it to paint the ink layer at two resolutions.
+     */
+    this.sources = {
       geometry: () => this.#geometry,
       style: () => this.store.style,
       outlines: () => this.#outlines,
@@ -397,7 +406,8 @@ export class Kernel {
       title: () => this.store.doc?.title ?? 'assignment',
       blockedBlockIds: () =>
         this.problems.all.filter((p) => p.scope === 'block' && p.block_id).map((p) => p.block_id!),
-    });
+    };
+    this.subsystems.exporter.attach(this.sources);
 
     await this.subsystems.protocol.connect();
     const snap = await this.subsystems.protocol.snapshot();
