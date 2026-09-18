@@ -17,8 +17,10 @@
  * render/**, and gates G1-G3 have to measure something.
  */
 
+import { KernelActions } from './actions';
 import type {
   ChatPanel,
+  EditorActions,
   Delta,
   Document,
   ExportController,
@@ -308,6 +310,13 @@ export class Kernel {
   readonly pages = new PageRegistry();
   readonly scheduler: KernelScheduler;
 
+  /**
+   * The editor's verbs. Handed to every UI subsystem at mount, because a subsystem that
+   * can detect an intent and cannot act on it is inert — which is exactly what happened
+   * to the lasso before this existed.
+   */
+  readonly actions: EditorActions;
+
   #geometry: DocumentGeometry | null = null;
   #metrics: GlyphMetricsProvider | null = null;
   #outlines: GlyphOutlineProvider | null = null;
@@ -318,14 +327,25 @@ export class Kernel {
   ) {
     this.store = new DocumentStore(this.problems);
     this.scheduler = new KernelScheduler((blocks, pagesDirty, all) => this.#flush(blocks, pagesDirty, all));
+    this.actions = new KernelActions({
+      selection: this.selection,
+      problems: this.problems,
+      protocol: subsystems.protocol,
+      currentDoc: () => this.store.doc,
+      currentVersion: () => this.store.version,
+      resync: async () => {
+        const snap = await subsystems.protocol.snapshot();
+        this.store.adoptSnapshot(snap.version, snap.document);
+      },
+    });
   }
 
   /** Every seam connected, in one place, in one order. */
   async start(): Promise<void> {
     this.pages.mount(this.hosts.pages);
-    this.subsystems.style.mount(this.hosts.rightPanel);
-    this.subsystems.chat.mount(this.hosts.chatDock);
-    this.subsystems.lasso.mount(this.hosts.pages);
+    this.subsystems.style.mount(this.hosts.rightPanel, this.actions);
+    this.subsystems.chat.mount(this.hosts.chatDock, this.actions);
+    this.subsystems.lasso.mount(this.hosts.pages, this.actions);
 
     this.store.onChange(() => this.scheduler.invalidateAll());
     this.selection.onChange(() => this.scheduler.invalidateAll());
@@ -339,6 +359,19 @@ export class Kernel {
         detail: reason,
       }),
     );
+
+    this.subsystems.exporter.attach({
+      geometry: () => this.#geometry,
+      style: () => this.store.style,
+      outlines: () => this.#outlines,
+      paint: this.subsystems.paint,
+      paper: this.subsystems.paper,
+      figures: this.subsystems.figures,
+      documentPath: () => this.store.doc?.source_path ?? null,
+      title: () => this.store.doc?.title ?? 'assignment',
+      blockedBlockIds: () =>
+        this.problems.all.filter((p) => p.scope === 'block' && p.block_id).map((p) => p.block_id!),
+    });
 
     await this.subsystems.protocol.connect();
     const snap = await this.subsystems.protocol.snapshot();
@@ -409,6 +442,25 @@ export class Kernel {
 
   /** §C.5.4: export is refused while any block carries a problem badge. */
   get canExport(): boolean {
-    return this.problems.all.every((p) => p.scope !== 'block');
+    return this.problems.all.every((p) => p.scope !== 'block') && this.subsystems.exporter.canExport;
+  }
+
+  /**
+   * The one public entry point for producing a PDF. The UI calls this rather than
+   * reaching for the export controller, so the refusal rule and the problem reporting
+   * live in one place instead of in every button that wants to export.
+   */
+  async exportPdf(dpi?: number): Promise<{ path: string } | null> {
+    const target = dpi ?? this.store.style?.export_dpi ?? 200;
+    try {
+      return await this.subsystems.exporter.exportPdf({ dpi: target });
+    } catch (err) {
+      this.problems.raise({
+        scope: 'app',
+        code: 'export.failed',
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
   }
 }

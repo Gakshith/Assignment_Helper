@@ -634,3 +634,52 @@ input[type='range'].slider:disabled { cursor: not-allowed; opacity: 0.5; }
 .sel-pill:hover:not(:disabled) { background: rgb(255 255 255 / 12%); }
 .sel-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .sel-pill:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------- chat dock */
+/* Bottom-docked at 44px, expanding to 360px. Never a permanent third column. */
+#chat-dock.chat-dock {
+  position: fixed;
+  left: var(--rail-w);
+  right: var(--panel-w);
+  bottom: 0;
+  height: var(--chat-h);
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--canvas-bg) 88%, var(--ink));
+  border-top: 1px solid var(--line);
+  transition: height 140ms ease-out;
+  overflow: hidden;
+}
+#chat-dock.chat-dock--open { height: 360px; }
+@media (prefers-reduced-motion: reduce) { #chat-dock.chat-dock { transition: none; } }
+
+.chat-bar { display: flex; gap: 6px; align-items: center; padding: 0 12px; height: var(--chat-h); flex: 0 0 auto; font-size: 12px; }
+.chat-scope-label { opacity: 0.65; }
+.chat-scope { font-weight: 600; color: var(--accent); }
+.chat-log { flex: 1 1 auto; overflow-y: auto; padding: 0 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+.chat-line { font-size: 13px; line-height: 1.45; max-width: 68ch; }
+.chat-line--you { font-weight: 600; }
+.chat-line--state { opacity: 0.6; font-style: italic; }
+.chat-line--problem { color: var(--accent-warn); }
+.chat-form { display: flex; gap: 8px; padding: 8px 12px; flex: 0 0 auto; }
+.chat-input { flex: 1 1 auto; resize: none; font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--paper); color: var(--ink); }
+.chat-send { font: inherit; font-size: 13px; padding: 6px 14px; border: 0; border-radius: 4px; background: var(--accent); color: var(--paper); cursor: pointer; }
+.chat-send:focus-visible, .chat-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Inline block editor. A textarea, never window.prompt: a modal dialog blocks the
+   event loop and wedges the page in an automated session. */
+.block-editor {
+  position: fixed;
+  z-index: 60;
+  width: 420px;
+  max-width: calc(100vw - 24px);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 30%);
+}
+.block-editor[hidden] { display: none !important; }

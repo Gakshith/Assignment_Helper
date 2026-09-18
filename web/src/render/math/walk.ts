@@ -33,6 +33,9 @@
 import type { GlyphMetricsProvider, GlyphPlacement } from '../geometry';
 import type { Mm } from '../units';
 
+/** The sentinel for a RULE (fraction bar, radical bar). Not a font glyph. */
+export const RULE_CH = '\u2500';
+
 /** Every family KaTeX may reach for in the subset we support. */
 export const FONT_FAMILIES = [
   'Main-Regular',
@@ -98,7 +101,18 @@ interface Cursor {
  * Walk a KaTeX box tree into positioned glyphs. Pure: no canvas, no DOM reads, no
  * randomness — invariant I1 applies here as much as anywhere under `render/`.
  */
-export function walkTree(root: KatexNode): MathWalkResult {
+export function walkTree(
+  root: KatexNode,
+  /**
+   * Per-character advance in em, from the hand being drawn in.
+   *
+   * Needed because KaTeX groups an ordinary run into ONE node: `2.40` arrives as a
+   * single node whose `width` is 0.5 — one digit. Advancing every character of the run
+   * by the node's width gives the period a full digit's space and renders "2. 40".
+   * When this is supplied, a multi-character node is measured character by character.
+   */
+  advanceEm?: (ch: string) => number,
+): MathWalkResult {
   const glyphs: Omit<GlyphPlacement, 'variant'>[] = [];
   const cursor: Cursor = { xEm: 0, yEm: 0, scale: 1 };
   let maxX = 0;
@@ -114,20 +128,37 @@ export function walkTree(root: KatexNode): MathWalkResult {
     if (classes.includes('katex-mathml')) return;
 
     if (classes.includes('vlist')) {
+      const startX = cursor.xEm;
+      let widest = startX;
+      // Rules emitted inside this vlist. A fraction bar spans the whole vlist, and its
+      // width is NOT on the node: KaTeX sizes frac-line with CSS (100% of the vlist),
+      // so reading node.width gives 0 and the bar renders as a zero-length line —
+      // invisible, and invisible in a way that still looks like a fraction until you
+      // look closely at a printed page.
+      const ruleIndices: number[] = [];
+
       for (const row of node.children ?? []) {
-        // Each row's own `top`, measured against the pstrut inside it.
         const top = em(row.style?.['top']);
         const pstrut = (row.children ?? []).find((c) => (c.classes ?? []).includes('pstrut'));
         const pstrutH = em(pstrut?.style?.['height']);
         // Positive = below the baseline, matching screen coordinates.
         const shift = pstrutH + top;
-        const rowX = cursor.xEm;
+        cursor.xEm = startX;
+        const before = glyphs.length;
         for (const child of row.children ?? []) visit(child, yEm + shift, scale);
-        // vlist rows stack vertically, so each starts at the same x.
-        cursor.xEm = rowX;
+        for (let i = before; i < glyphs.length; i++) {
+          if (glyphs[i]!.ch === RULE_CH) ruleIndices.push(i);
+        }
+        widest = Math.max(widest, cursor.xEm);
       }
-      // The vlist as a whole advances by its widest row.
-      cursor.xEm = Math.max(cursor.xEm, maxX);
+
+      for (const i of ruleIndices) {
+        const rule = glyphs[i]!;
+        glyphs[i] = { ...rule, xMm: startX, scaleX: widest - startX, advanceMm: widest - startX };
+      }
+
+      cursor.xEm = widest;
+      maxX = Math.max(maxX, widest);
       return;
     }
 
@@ -159,8 +190,18 @@ export function walkTree(root: KatexNode): MathWalkResult {
 
     if (typeof node.text === 'string' && node.text.length > 0 && !node.children?.length) {
       const family = familyFor(classes);
-      const width = node.width ?? 0;
-      for (const ch of node.text) {
+      const nodeWidth = node.width ?? 0;
+      const chars = [...node.text];
+      // A single-character node: KaTeX's own width is authoritative and already carries
+      // the TeX metrics we installed. A multi-character run: measure per character, or
+      // the whole run advances by one character's width repeated.
+      const perChar =
+        chars.length > 1 && advanceEm
+          ? chars.map((c) => advanceEm(c))
+          : chars.map(() => nodeWidth);
+
+      chars.forEach((ch, i) => {
+        const adv = perChar[i] ?? nodeWidth;
         glyphs.push({
           ch,
           xMm: cursor.xEm,
@@ -170,11 +211,11 @@ export function walkTree(root: KatexNode): MathWalkResult {
           slantDeg: family.includes('Italic') ? -12 : 0,
           scaleX: 1,
           scaleY: 1,
-          advanceMm: width,
+          advanceMm: adv,
         });
-        cursor.xEm += width;
+        cursor.xEm += adv;
         maxX = Math.max(maxX, cursor.xEm);
-      }
+      });
       return;
     }
 

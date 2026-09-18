@@ -140,6 +140,7 @@ export function makeStubExport(problems: ProblemSink): ExportController {
   return {
     name: 'stub-export',
     canExport: true,
+    attach() {},
     async exportPdf() {
       problems.raise({
         scope: 'app',

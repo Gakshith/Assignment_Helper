@@ -168,3 +168,62 @@ describe('layout engine', () => {
     expect(block.fitScale).toBeLessThanOrEqual(1);
   });
 });
+
+describe('inline maths flows with the sentence', () => {
+  it('a prose/inline-maths/prose run shares one baseline', () => {
+    // The parser splits `text $x$ text` into three BLOCKS, because a block is the unit
+    // of selection and editing. They must still read as one sentence: without inline
+    // continuation a physics paragraph renders as a column of fragments, which is
+    // exactly how the first real assignment came out.
+    const doc: Document = {
+      schema_version: 1,
+      id: 'd',
+      blocks: [
+        { kind: 'prose', id: 'p1', seed: 1, text: 'A block of mass' },
+        { kind: 'math', id: 'm1', seed: 2, latex: 'm = 2.40', display: false },
+        { kind: 'prose', id: 'p2', seed: 3, text: 'kg slides down.' },
+      ],
+    };
+    const blocks = layoutDocument(doc, STYLE, metrics).pages[0]!.blocks;
+    const baselineOf = (id: string) =>
+      blocks.find((b) => b.blockId === id)!.lines[0]!.baselineYMm;
+
+    expect(baselineOf('m1')).toBeCloseTo(baselineOf('p1'), 6);
+    expect(baselineOf('p2')).toBeCloseTo(baselineOf('p1'), 6);
+
+    // And they advance left to right rather than stacking on the same x.
+    const xOf = (id: string) => blocks.find((b) => b.blockId === id)!.lines[0]!.xMm;
+    expect(xOf('m1')).toBeGreaterThan(xOf('p1'));
+    expect(xOf('p2')).toBeGreaterThan(xOf('m1'));
+  });
+
+  it('DISPLAY maths still takes its own row', () => {
+    const doc: Document = {
+      schema_version: 1,
+      id: 'd',
+      blocks: [
+        { kind: 'prose', id: 'p1', seed: 1, text: 'Therefore' },
+        { kind: 'math', id: 'm1', seed: 2, latex: 'v^2 = 2 a d', display: true },
+      ],
+    };
+    const blocks = layoutDocument(doc, STYLE, metrics).pages[0]!.blocks;
+    const p1 = blocks.find((b) => b.blockId === 'p1')!.lines[0]!.baselineYMm;
+    const m1 = blocks.find((b) => b.blockId === 'm1')!.lines[0]!.baselineYMm;
+    expect(m1).toBeGreaterThan(p1);
+  });
+
+  it('a heading never resumes a line', () => {
+    const doc: Document = {
+      schema_version: 1,
+      id: 'd',
+      blocks: [
+        { kind: 'prose', id: 'p1', seed: 1, text: 'End of a paragraph.' },
+        { kind: 'prose', id: 'h1', seed: 2, text: 'Problem 2', emphasis: 'heading' },
+      ],
+    };
+    const blocks = layoutDocument(doc, STYLE, metrics).pages[0]!.blocks;
+    const p1 = blocks.find((b) => b.blockId === 'p1')!.lines[0]!.baselineYMm;
+    const h1 = blocks.find((b) => b.blockId === 'h1')!.lines[0]!.baselineYMm;
+    expect(h1).toBeGreaterThan(p1);
+  });
+});

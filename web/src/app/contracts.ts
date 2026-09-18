@@ -6,7 +6,7 @@
  * and the lead amends this file on `dev` and re-bases everyone (plan §3).
  */
 
-import type { Block, Document, Delta, Problem, Snapshot, Style } from '../types/document';
+import type { Block, Document, Delta, Op, Problem, Snapshot, Style } from '../types/document';
 import type {
   DocumentGeometry,
   GlyphMetricsProvider,
@@ -70,28 +70,97 @@ export interface GlyphProfileProvider {
   }>;
 }
 
+/**
+ * Everything export needs from the running app. AMENDED 2026-09-18.
+ *
+ * `exportPdf({ dpi })` was handed a number and nothing else, so a correct
+ * implementation had no geometry to paint, no engines to paint it with, and no way to
+ * know whether §C.5.4's export block was in force. Third instance of the same gap: the
+ * freeze fixed the signature of a call and not the flow of data into it.
+ *
+ * Invariant I11 lives here in the shape of the interface: export is given GEOMETRY and
+ * the paint engines, never a preview bitmap, so it cannot upscale the screen even by
+ * mistake.
+ */
+export interface ExportSources {
+  geometry(): DocumentGeometry | null;
+  style(): Style | null;
+  outlines(): GlyphOutlineProvider | null;
+  readonly paint: PaintEngine;
+  readonly paper: PaperEngine;
+  readonly figures: FiguresRenderer;
+  documentPath(): string | null;
+  title(): string;
+  /** §C.5.4: export is BLOCKED while any block carries a problem badge. */
+  blockedBlockIds(): readonly string[];
+}
+
 export interface ExportController {
   readonly name: string;
+  /** Called once by the kernel at startup. */
+  attach(sources: ExportSources): void;
   /** Rejects if any block carries a problem badge (plan §C.5.4). */
   exportPdf(opts: { dpi: number }): Promise<{ path: string }>;
   readonly canExport: boolean;
 }
 
+/**
+ * What a UI subsystem is allowed to DO to the document. AMENDED 2026-09-18.
+ *
+ * Before this existed, `LassoController.mount(host)` received a DOM node and nothing
+ * else — so a correct implementation could detect a selection and had no way to report
+ * it, and the four-action toolbar had no way to act. The lasso shipped with
+ * `onSelect: () => {}` and was inert. Same gap as `setGeometry`: the freeze fixed the
+ * shape of a call and not the flow of data through it.
+ *
+ * Everything here goes through the server (invariant I4). Nothing mutates the local
+ * document and hopes.
+ */
+export interface EditorActions {
+  readonly selection: SelectionModel;
+
+  /** New seeds for these blocks — the same words in a differently imperfect hand. */
+  reroll(blockIds: readonly string[], scale: RerollScale): Promise<void>;
+
+  /** Replace one block's text (prose) or LaTeX (math). One undo step. */
+  editBlock(blockId: string, text: string): Promise<void>;
+
+  setStyle(style: Style): Promise<void>;
+
+  /** Every AI edit and every user edit is exactly one undo step (acceptance row 19). */
+  undo(): Promise<void>;
+  redo(): Promise<void>;
+  readonly canUndo: boolean;
+  readonly canRedo: boolean;
+  onHistoryChange(handler: () => void): void;
+
+  /**
+   * The toolbar's "Ask" pill. The chat panel subscribes; the lasso publishes. Routing
+   * it through here rather than letting the lasso reach for the chat panel keeps the
+   * two UI strands from importing each other.
+   */
+  requestAsk(blockIds: readonly string[]): void;
+  onAskRequested(handler: (blockIds: readonly string[]) => void): void;
+}
+
+/** Re-roll at three scales — plan §C.1's M4 wording, made concrete. */
+export type RerollScale = 'block' | 'page' | 'document';
+
 export interface ChatPanel {
   readonly name: string;
-  mount(host: HTMLElement): void;
+  mount(host: HTMLElement, actions: EditorActions): void;
   /** The selection is the unit of conversation — §B.2's #1 differentiator. */
   askAboutSelection(blockIds: readonly string[], question: string): Promise<void>;
 }
 
 export interface StylePanel {
   readonly name: string;
-  mount(host: HTMLElement): void;
+  mount(host: HTMLElement, actions?: EditorActions): void;
 }
 
 export interface LassoController {
   readonly name: string;
-  mount(host: HTMLElement): void;
+  mount(host: HTMLElement, actions: EditorActions): void;
   /**
    * Hand the controller the current geometry so it can index it.
    *
@@ -141,4 +210,4 @@ export interface Scheduler {
   readonly pendingPages: readonly number[];
 }
 
-export type { Block, Document, Delta, Problem, Snapshot, Style };
+export type { Block, Document, Delta, Op, Problem, Snapshot, Style };

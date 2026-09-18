@@ -135,6 +135,24 @@ class LayoutRun {
    * whole multiples of the pitch, so only gaps and reserved heights can knock the text
    * off the grid; this puts it back.
    */
+  /**
+   * Where the previous flow left off, when the next block may continue on the same line.
+   *
+   * The markdown parser turns `text $x$ text` into prose / inline-math / prose BLOCKS,
+   * because the block is the unit of selection, editing, chat and re-roll. Without this
+   * cursor each of those three starts its own line, and a physics paragraph renders as
+   * a column of fragments — which is exactly how the first real assignment came out.
+   */
+  #inline: { xMm: Mm; baselineYMm: Mm } | null = null;
+  /** Set by #flowText after each line; read by the caller to update #inline. */
+  #lastFlowEndMm: { xMm: Mm; baselineYMm: Mm } | null = null;
+
+  /** The cursor, but only for kinds that are allowed to resume a line. */
+  #inlineStartFor(emphasis: string): { xMm: Mm; baselineYMm: Mm } | undefined {
+    if (emphasis !== 'normal') return undefined;
+    return this.#inline ?? undefined;
+  }
+
   #snap(y: Mm): Mm {
     const pitch = this.#rs.gridPitchMm;
     if (pitch === null || pitch <= 0) return y;
@@ -175,6 +193,8 @@ class LayoutRun {
     readonly frags: Fragment[];
     readonly problems: Problem[];
     readonly lineIndexBase: number;
+    /** Continue an existing line instead of starting a new one. */
+    readonly inlineStart?: { xMm: Mm; baselineYMm: Mm } | undefined;
   }): number {
     const amps = amplitudesFor(this.#rs, args.charsBefore);
     const resolved = resolveText(args.text, this.#metrics, args.sizeMm, args.monoAdvanceMm);
@@ -193,7 +213,16 @@ class LayoutRun {
       );
     }
 
-    const lines = breakIntoLines(resolved.words, args.columnWidthMm, resolved.spaceWidthMm);
+    const columnRightMm = this.#column.xMm + this.#column.wMm;
+    const firstLineWidthMm = args.inlineStart
+      ? Math.max(0, columnRightMm - args.inlineStart.xMm)
+      : undefined;
+    const lines = breakIntoLines(
+      resolved.words,
+      args.columnWidthMm,
+      resolved.spaceWidthMm,
+      firstLineWidthMm,
+    );
     const rowHeight = this.#rs.lineAdvanceMm;
     const descender = args.sizeMm * DESCENDER_ALLOWANCE_RATIO;
 
@@ -201,17 +230,29 @@ class LayoutRun {
     let lineIndex = args.lineIndexBase;
     let badMetrics = false;
 
+    let continuing = args.inlineStart !== undefined;
     for (const line of lines) {
-      this.#ensureRoom(rowHeight);
-      const baselineYMm = this.#rowTopMm + rowHeight - descender;
+      let baselineYMm: Mm;
+      let xStartMm = args.xStartMm;
+      let widthMm = args.columnWidthMm;
+      if (continuing && args.inlineStart) {
+        // The first line resumes an existing baseline; no new row is reserved for it.
+        baselineYMm = args.inlineStart.baselineYMm;
+        xStartMm = args.inlineStart.xMm;
+        widthMm = Math.max(0, columnRightMm - args.inlineStart.xMm);
+        continuing = false;
+      } else {
+        this.#ensureRoom(rowHeight);
+        baselineYMm = this.#rowTopMm + rowHeight - descender;
+      }
 
       const placed = placeLine({
         blockId: args.blockId,
         lineIndex,
         line,
         baselineYMm,
-        xStartMm: args.xStartMm,
-        columnWidthMm: args.columnWidthMm,
+        xStartMm,
+        columnWidthMm: widthMm,
         sizeMm: args.sizeMm,
         spaceWidthMm: resolved.spaceWidthMm,
         seed: args.seed,
@@ -228,7 +269,13 @@ class LayoutRun {
 
       ordinal = placed.nextCharOrdinal;
       lineIndex += 1;
-      this.#rowTopMm += rowHeight;
+      // Where this line ended, so a following inline block can resume from it.
+      this.#lastFlowEndMm = placed.inkBox
+        ? { xMm: placed.inkBox.xMm + placed.inkBox.wMm + resolved.spaceWidthMm, baselineYMm }
+        : { xMm: xStartMm, baselineYMm };
+      if (!(lineIndex - args.lineIndexBase === 1 && args.inlineStart)) {
+        this.#rowTopMm += rowHeight;
+      }
     }
 
     if (badMetrics) {
@@ -314,12 +361,16 @@ class LayoutRun {
 
     switch (block.kind) {
       case 'spacer': {
+        // Nothing resumes a line across this.
+        this.#inline = null;
         const box = this.#reserve(block.height_mm);
         this.#emit({ blockId: block.id, kind: 'spacer', frags: [], problems, fitScale: 1, fallbackBox: box });
         return;
       }
 
       case 'diagram': {
+        // Nothing resumes a line across this.
+        this.#inline = null;
         // The figures strand fills this in. Until then the height is reserved so the rest
         // of the page is already correct, and the badge says why the space is empty.
         const box = this.#reserve(block.height_mm ?? 40);
@@ -346,6 +397,77 @@ class LayoutRun {
         );
 
         if (typeset.kind === 'ok') {
+          /**
+           * Inline maths continues the current line when it fits.
+           *
+           * `$m = 2.40$` in the middle of a sentence is one block, because the block is
+           * the unit of selection and editing — but it must READ as part of the
+           * sentence. Without this the parser's prose/maths/prose split renders as three
+           * separate lines and a physics paragraph becomes a column of fragments.
+           */
+          const inline = block.display === false ? this.#inline : null;
+          const columnRightMm = this.#column.xMm + this.#column.wMm;
+          const fitsInline =
+            inline !== null && inline.xMm + typeset.widthMm <= columnRightMm;
+
+          if (fitsInline && inline) {
+            const xMm = inline.xMm;
+            const baselineYMm = inline.baselineYMm;
+            const line: LineGeometry = {
+              blockId: block.id,
+              lineIndex: 0,
+              baselineYMm,
+              xMm,
+              widthMm: typeset.widthMm,
+              glyphs: typeset.glyphs.map((g) => ({
+                ...g,
+                xMm: xMm + g.xMm,
+                baselineYMm: baselineYMm + g.baselineYMm,
+              })),
+            };
+            const frag = this.#fragmentFor(frags);
+            frag.lines.push(line);
+            for (const r of typeset.rules) {
+              frag.figures.push({
+                ...r,
+                pointsMm: r.pointsMm.map(
+                  (pt) => [xMm + pt[0], baselineYMm + pt[1]] as readonly [Mm, Mm],
+                ),
+                seed: `${block.id}:${r.seed}`,
+              });
+            }
+            const boxMm: RectMm = {
+              xMm,
+              yMm: baselineYMm - typeset.heightMm,
+              wMm: typeset.widthMm,
+              hMm: typeset.heightMm + typeset.depthMm,
+            };
+            frag.box = unionRect(frag.box, boxMm);
+            // Hand the line on to whatever follows, plus a word space — without it the
+            // next word butts straight onto the maths and reads as "2.40kg".
+            const spaceMm = this.#metrics.advanceMm(' ', this.#rs.sizeMm);
+            this.#inline = { xMm: xMm + typeset.widthMm + spaceMm, baselineYMm };
+            if (typeset.missing.length > 0) {
+              problems.push({
+                code: 'glyph.missing',
+                message:
+                  `The hand has no glyph for ${typeset.missing.map((c) => JSON.stringify(c)).join(', ')}. ` +
+                  'Draw them in the glyph studio, or the maths will be incomplete.',
+              });
+            }
+            this.#emit({
+              blockId: block.id,
+              kind: 'math',
+              frags,
+              problems,
+              fitScale: typeset.fitScale,
+              fallbackBox: null,
+            });
+            return;
+          }
+
+          // Display maths, or inline maths that will not fit: its own row.
+          this.#inline = null;
           const box = this.#reserve(typeset.heightMm + typeset.depthMm);
           const baselineYMm = box.yMm + typeset.heightMm;
           const xMm = this.#column.xMm + typeset.indentMm;
@@ -423,6 +545,9 @@ class LayoutRun {
       }
 
       case 'prose': {
+        // Continues a line left open by an inline maths block, and leaves one open for
+        // the next. Only NORMAL prose flows inline: a heading or a boxed answer that
+        // resumed mid-line would be a different bug.
         const size = this.#rs.sizeMm * EMPHASIS_SCALE[block.emphasis ?? 'normal'];
         const fit = this.#fitScaleFor(block.text, size, null, this.#column.wMm);
         if (fit.overflow !== null) problems.push(overflowProblem(fit.overflow));
@@ -438,12 +563,16 @@ class LayoutRun {
           frags,
           problems,
           lineIndexBase: 0,
+          inlineStart: this.#inlineStartFor(block.emphasis ?? 'normal'),
         });
+        this.#inline = block.emphasis === 'heading' ? null : this.#lastFlowEndMm;
         this.#emit({ blockId: block.id, kind: 'prose', frags, problems, fitScale: fit.fitScale, fallbackBox: null });
         return;
       }
 
       case 'boxed': {
+        // Nothing resumes a line across this.
+        this.#inline = null;
         // Lay the children out inside an inset column, then frame the union of their ink.
         // The boxed answer is ONE selectable unit — that is what a boxed final answer is —
         // so the children do not get BlockGeometry entries of their own. Each child keeps

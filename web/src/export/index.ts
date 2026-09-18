@@ -1,7 +1,9 @@
-// OWNER: the export strand. Replace the implementation; do not touch main.ts.
-import { makeStubExport } from '../app/stubs';
+// OWNER: the export strand.
 import type { ExportController } from '../app/contracts';
+import { BrowserExportController } from './controller';
 
-export function createExportController(_opts: { token: string | null }): ExportController {
-  return makeStubExport({ raise: (p) => console.error(p), clearBlock: () => {}, all: [], onChange: () => {} });
+export function createExportController(opts: { token: string | null }): ExportController {
+  return new BrowserExportController(opts.token);
 }
+
+export { BrowserExportController, ExportBlocked } from './controller';

@@ -174,3 +174,25 @@ describe('the hand drives the layout', () => {
     expect(after).not.toBeCloseTo(before, 4);
   });
 });
+
+describe('grouped runs are measured per character', () => {
+  it('KaTeX groups an ordinary run into one node, and we must not repeat its width', () => {
+    // `2.40` arrives as a SINGLE node with width 0.5 — one digit. Advancing every
+    // character by that gives the period a full digit's space and renders "2. 40" on
+    // the page. Caught by looking at a printed PDF, not by any assertion.
+    const tree = tree2('m = 2.40');
+    const wide = walkTree(tree, () => 0.9);
+    const narrow = walkTree(tree, () => 0.2);
+    expect(wide.widthEm).toBeGreaterThan(narrow.widthEm);
+
+    // And a per-character function actually varies the spacing within the run.
+    const varied = walkTree(tree, (c) => (c === '.' ? 0.1 : 0.6));
+    const xs = varied.glyphs.filter((g) => '2.40'.includes(g.ch)).map((g) => g.xMm);
+    const gaps = xs.slice(1).map((x, i) => x - xs[i]!);
+    expect(Math.min(...gaps)).toBeLessThan(Math.max(...gaps));
+  });
+});
+
+function tree2(tex: string) {
+  return k.__renderToDomTree(tex, { displayMode: false });
+}

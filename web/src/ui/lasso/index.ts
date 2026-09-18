@@ -11,7 +11,7 @@
  * user has to be able to predict what a gesture will grab.
  */
 
-import type { LassoController } from '../../app/contracts';
+import type { EditorActions, LassoController } from '../../app/contracts';
 import type { DocumentGeometry } from '../../render/geometry';
 import type { Mm, RectMm } from '../../render/units';
 import { SpatialIndex } from './spatial';
@@ -19,29 +19,36 @@ import { placeToolbar, toolbarState, type ToolbarAction } from './toolbar';
 
 const TOP_BAR_H = 48;
 
-export interface LassoHooks {
-  onSelect(blockIds: readonly string[]): void;
-  onAction(action: ToolbarAction, blockIds: readonly string[]): void;
-}
-
 export class Lasso implements LassoController {
   readonly name = 'lasso';
   readonly #index = new SpatialIndex();
+  #actions: EditorActions | null = null;
+  #editor: HTMLTextAreaElement | null = null;
+  #blockText = new Map<string, string>();
   #host: HTMLElement | null = null;
   #box: HTMLElement | null = null;
   #toolbar: HTMLElement | null = null;
   #selected: string[] = [];
   #dragFrom: { x: number; y: number; page: number } | null = null;
 
-  constructor(private readonly hooks: LassoHooks) {}
-
   /** Called whenever geometry changes. Cheap: rebuilding 20 pages is a few ms. */
   setGeometry(geometry: DocumentGeometry | null): void {
     this.#index.rebuild(geometry?.pages ?? []);
+    // Remember each block's text so Edit can open with what is actually on the page.
+    this.#blockText.clear();
+    for (const page of geometry?.pages ?? []) {
+      for (const block of page.blocks) {
+        const text = block.lines
+          .flatMap((l) => l.glyphs.map((g) => g.ch))
+          .join('');
+        if (text) this.#blockText.set(block.blockId, text);
+      }
+    }
   }
 
-  mount(host: HTMLElement): void {
+  mount(host: HTMLElement, actions: EditorActions): void {
     this.#host = host;
+    this.#actions = actions;
     host.addEventListener('pointerdown', this.#onDown);
     host.addEventListener('pointermove', this.#onMove);
     host.addEventListener('pointerup', this.#onUp);
@@ -136,7 +143,77 @@ export class Lasso implements LassoController {
 
   #setSelection(ids: string[]): void {
     this.#selected = ids;
-    this.hooks.onSelect(ids);
+    // The kernel's selection model is the single source of truth for what is selected;
+    // every other panel reads it from there rather than from this controller.
+    this.#actions?.selection.set(ids);
+  }
+
+  async #run(action: ToolbarAction): Promise<void> {
+    const actions = this.#actions;
+    const ids = this.#selected;
+    if (!actions || ids.length === 0) return;
+    switch (action) {
+      case 'ask':
+        actions.requestAsk(ids);
+        break;
+      case 'reroll':
+        await actions.reroll(ids, 'block');
+        break;
+      case 'edit':
+        this.#openEditor(ids[0]!);
+        break;
+      case 'restyle':
+        // The style panel is the permanent home of the dial (§B.4); selecting blocks
+        // scopes it. Nothing to do here but make sure the selection is published,
+        // which #setSelection already did.
+        break;
+    }
+  }
+
+  /**
+   * Inline block editing. A textarea anchored to the page, NOT window.prompt: a modal
+   * dialog blocks the event loop, and in an automated browser session it wedges the
+   * whole page.
+   */
+  #openEditor(blockId: string): void {
+    const actions = this.#actions;
+    if (!actions) return;
+    if (!this.#editor) {
+      const ta = document.createElement('textarea');
+      ta.className = 'block-editor';
+      ta.id = 'block-editor';
+      ta.rows = 3;
+      document.body.append(ta);
+      this.#editor = ta;
+    }
+    const ta = this.#editor;
+    ta.value = this.#blockText.get(blockId) ?? '';
+    ta.hidden = false;
+    const sel = this.#selectionRect();
+    if (sel) {
+      ta.style.left = `${Math.max(12, sel.left + 24)}px`;
+      ta.style.top = `${sel.top + 48}px`;
+    }
+    ta.focus();
+    ta.select();
+
+    const commit = (save: boolean) => {
+      ta.hidden = true;
+      ta.onkeydown = null;
+      ta.onblur = null;
+      if (!save) return;
+      void actions.editBlock(blockId, ta.value);
+    };
+    ta.onkeydown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        commit(false);
+      } else if (ev.key === 'Enter' && (ev.metaKey || ev.ctrlKey)) {
+        ev.preventDefault();
+        commit(true);
+      }
+    };
+    ta.onblur = () => commit(true);
   }
 
   // ------------------------------------------------------------ chrome
@@ -177,7 +254,7 @@ export class Lasso implements LassoController {
       ];
       btn.disabled = !item.enabled;
       if (item.reason) btn.title = item.reason;
-      btn.addEventListener('click', () => this.hooks.onAction(item.action, this.#selected));
+      btn.addEventListener('click', () => void this.#run(item.action));
       bar.append(btn);
     }
 
@@ -204,11 +281,7 @@ export class Lasso implements LassoController {
   }
 }
 
-/** The stub stays until the kernel can hand us geometry; see main.ts. */
-export const lassoController: LassoController = new Lasso({
-  onSelect: () => {},
-  onAction: () => {},
-});
+export const lassoController: LassoController = new Lasso();
 
 export { placeToolbar, toolbarState } from './toolbar';
 export { SpatialIndex } from './spatial';

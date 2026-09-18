@@ -9,7 +9,7 @@
 
 import katex from 'katex';
 import { randInt } from '../rng';
-import { toMm, walkTree } from '../math/walk';
+import { applyHandMetrics, toMm, walkTree } from '../math/walk';
 import type { FigureGeometry, GlyphMetricsProvider, GlyphPlacement } from '../geometry';
 import type { Mm } from '../units';
 
@@ -50,6 +50,34 @@ export type TypesetResult =
 
 interface KatexPrivate {
   __renderToDomTree: (tex: string, opts?: unknown) => unknown;
+  __setFontMetrics: (family: string, metrics: Record<number, number[]>) => void;
+}
+
+/**
+ * Which hand's metrics KaTeX is currently carrying.
+ *
+ * This is the whole point of M3 and it was, for a while, DEAD CODE: `applyHandMetrics`
+ * existed, was tested, and had no callers, so every expression was being laid out
+ * against KaTeX's default Computer Modern metrics. The maths rendered and looked
+ * plausible, which is exactly why it went unnoticed — the failure of a metrics
+ * substitution is not a crash, it is spacing that is subtly wrong for the hand it is
+ * drawn in, on a page someone is about to hand in.
+ *
+ * KaTeX holds font metrics in module state with no getter, so the applied profile is
+ * tracked here. Keyed by profile id: applying is idempotent and cheap to re-check, and
+ * a profile switch must re-apply or the new hand inherits the old hand's spacing.
+ */
+let appliedProfileId: string | null = null;
+
+function ensureHandMetrics(metrics: GlyphMetricsProvider): void {
+  if (appliedProfileId === metrics.profileId) return;
+  applyHandMetrics(katex as unknown as KatexPrivate, metrics);
+  appliedProfileId = metrics.profileId;
+}
+
+/** Test seam: forget what was applied so a test can assert the substitution happens. */
+export function resetHandMetrics(): void {
+  appliedProfileId = null;
 }
 
 function parsePosition(err: unknown): number | null {
@@ -68,6 +96,10 @@ export function typesetMath(
   blockSeed: bigint,
   metrics: GlyphMetricsProvider,
 ): TypesetResult {
+  // Before any parse: the hand's metrics must be in place, or TeX lays the expression
+  // out against Computer Modern and the spacing belongs to a font nobody is writing in.
+  ensureHandMetrics(metrics);
+
   let tree: unknown;
   try {
     tree = (katex as unknown as KatexPrivate).__renderToDomTree(latex, {
@@ -87,7 +119,9 @@ export function typesetMath(
     };
   }
 
-  const walked = walkTree(tree as never);
+  // The hand's own advances, in em, so a grouped run like `2.40` is measured character
+  // by character instead of repeating one width.
+  const walked = walkTree(tree as never, (ch) => metrics.advanceMm(ch, 1));
   const indentMm = display ? DISPLAY_INDENT_MM : 0;
   const available = Math.max(0, columnWidthMm - indentMm);
   const naturalMm = walked.widthEm * sizeMm;
