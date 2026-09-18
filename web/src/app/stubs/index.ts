@@ -172,6 +172,7 @@ export const stubStylePanel: StylePanel = {
 export const stubLasso: LassoController = {
   name: 'stub-lasso',
   mount() {},
+  setGeometry() {},
   hitTest(_x: Mm, _y: Mm) {
     return null;
   },

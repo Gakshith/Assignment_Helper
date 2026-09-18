@@ -92,6 +92,17 @@ export interface StylePanel {
 export interface LassoController {
   readonly name: string;
   mount(host: HTMLElement): void;
+  /**
+   * Hand the controller the current geometry so it can index it.
+   *
+   * AMENDED 2026-09-17 by the lead. The original interface had `hitTest` and no way to
+   * receive anything to hit-test AGAINST, so a correct implementation would build an
+   * empty index and silently select nothing on every gesture — a failure with no error
+   * and no log line. The seam-freeze covered the shape of the call and not the flow of
+   * data into it, which is the same gap that cost this project three integration
+   * defects in the previous wave.
+   */
+  setGeometry(geometry: DocumentGeometry | null): void;
   /** Gate G15: <=2 ms per pointermove on a 20-page document. Needs a spatial index. */
   hitTest(xMm: Mm, yMm: Mm, pageIndex: number): string | null;
   hitTestRect(rect: RectMm, pageIndex: number): readonly string[];

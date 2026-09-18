@@ -368,6 +368,9 @@ export class Kernel {
 
     if (all || this.#geometry === null || this.#geometry.docVersion !== this.store.version) {
       this.#geometry = this.subsystems.layout.layout(doc, style, this.#metrics);
+      // The lasso indexes what it is given. Without this call its index is empty and
+      // every gesture selects nothing, silently — see the note on setGeometry.
+      this.subsystems.lasso.setGeometry(this.#geometry);
     }
 
     const sizeName = style.paper?.page_size ?? 'letter';
