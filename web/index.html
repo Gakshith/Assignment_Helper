@@ -4,16 +4,140 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Assignment Helper</title>
+    <!-- Google Fonts is the one external stylesheet host this project allows. Both
+         faces carry a real fallback stack in --font-ui / --font-mono, because
+         --offline is a supported bypass and the chrome must not lose its type when
+         the network is gone. No serif anywhere in the UI: the rendered handwriting
+         is the expressive typographic layer and a display serif competes with it. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Public+Sans:wght@400;500;600&display=swap"
+    />
     <link rel="stylesheet" href="./src/ui/app.css" />
+    <!-- Before first paint, so a dark-theme session never flashes the light chrome.
+         Inline and tiny by design; everything else is a module. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('ah.theme');
+          if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+        } catch (err) {
+          // Not swallowed: without storage the theme silently resets every reload.
+          console.error('could not read the stored theme', err);
+        }
+      })();
+    </script>
   </head>
   <body>
-    <header id="top-bar"></header>
+    <!-- The chrome is static markup on purpose: it renders, and stays legible and
+         keyboard-navigable, even if a module fails to boot. The shell module only
+         attaches behaviour and fills the badge and banner regions. -->
+    <header id="top-bar">
+      <div class="brand">
+        <span class="brand__mark">Assignment Helper</span>
+        <span class="brand__doc u-mono" id="doc-title">no document open</span>
+      </div>
+      <div class="top-bar__spacer"></div>
+      <!-- I15: every active bypass, and a dev build, badged here permanently. -->
+      <div id="bypass-badges" role="status" aria-label="Active bypasses"></div>
+      <div class="top-bar__tools">
+        <button type="button" class="btn" id="theme-toggle" aria-live="off">
+          <svg class="btn__icon" viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="4"></circle>
+            <path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M16 4l-1.4 1.4M5.4 14.6L4 16"></path>
+          </svg>
+          <span id="theme-toggle-label">Auto</span>
+        </button>
+        <button type="button" class="btn btn--outline" id="export-pdf">
+          <svg class="btn__icon" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M10 2.5v10"></path>
+            <polyline points="6,9 10,12.5 14,9"></polyline>
+            <path d="M3.5 15.5v2h13v-2"></path>
+          </svg>
+          Export
+        </button>
+      </div>
+    </header>
+
+    <!-- I5: an app-scope problem is never only a console line. -->
+    <div id="app-banner" role="region" aria-label="Problems" aria-live="assertive" data-count="0"></div>
+
     <div id="shell">
-      <nav id="rail"></nav>
-      <main id="pages"></main>
-      <aside id="right-panel"></aside>
+      <nav id="rail" aria-label="Workspace">
+        <div class="rail__inner">
+          <button type="button" class="rail__item" id="rail-document" aria-current="true">
+            <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 3h8l4 4v14H6z"></path><polyline points="14,3 14,7 18,7"></polyline>
+              <path d="M9 12h6M9 16h6"></path>
+            </svg>
+            <span class="rail__label">Document</span>
+          </button>
+          <button type="button" class="rail__item" id="rail-paper">
+            <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="4" y="3" width="16" height="18"></rect>
+              <path d="M8 3v18M4 8h16M4 13h16M4 18h16"></path>
+            </svg>
+            <span class="rail__label">Paper</span>
+          </button>
+          <button type="button" class="rail__item" id="rail-hand">
+            <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 19c3-1 4-3 6-7s3-6 5-6 3 2 1 5-5 4-8 4"></path>
+              <path d="M13 20h7"></path>
+            </svg>
+            <span class="rail__label">Hand</span>
+          </button>
+          <button type="button" class="rail__item" id="rail-figures">
+            <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="8" cy="8" r="4"></circle><rect x="12" y="12" width="8" height="8"></rect>
+            </svg>
+            <span class="rail__label">Figures</span>
+          </button>
+          <div class="rail__spacer"></div>
+          <button type="button" class="rail__item" id="rail-pin" aria-pressed="false">
+            <svg class="rail__icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M9 4h6l-1 6 4 3H6l4-3z"></path><path d="M12 13v7"></path>
+            </svg>
+            <span class="rail__label">Keep open</span>
+          </button>
+        </div>
+      </nav>
+
+      <main id="pages" aria-label="Pages"></main>
+
+      <aside id="right-panel" aria-label="Style"></aside>
     </div>
-    <section id="chat-dock"></section>
+
+    <!-- The dock's chrome is the shell's; its CONTENTS belong to the chat strand,
+         which mounts into #chat-dock and is never wrapped or wiped by this file. -->
+    <div class="dock" id="dock" data-open="false">
+      <div class="dock__bar">
+        <span class="dock__title">Ask about the selection</span>
+        <span class="dock__hint">select on the page, then ask</span>
+        <div class="dock__spacer"></div>
+        <button
+          type="button"
+          class="btn"
+          id="dock-toggle"
+          aria-expanded="false"
+          aria-controls="chat-dock"
+        >
+          <svg class="btn__icon dock__chevron" viewBox="0 0 20 20" aria-hidden="true">
+            <polyline points="5,12 10,7 15,12"></polyline>
+          </svg>
+          <span id="dock-toggle-label">Open</span>
+        </button>
+      </div>
+      <section id="chat-dock"></section>
+    </div>
+
     <script type="module" src="./src/main.ts"></script>
+    <!-- The shell is a SECOND entry, deliberately. main.ts is frozen and imports ten
+         fixed module paths; none of them owns the top bar or the rail, and nothing in
+         the kernel mounts them. A separate module keeps the chrome alive when the
+         kernel's boot throws, which is exactly when the banner matters most. It is
+         loaded after main.ts so the session token is already in sessionStorage. -->
+    <script type="module" src="./src/ui/shell/index.ts"></script>
   </body>
 </html>
